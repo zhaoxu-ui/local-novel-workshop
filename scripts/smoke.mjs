@@ -23,6 +23,9 @@ const required = [
   "public/modules/actions.js",
   "public/modules/panels.js",
   "scripts/e2e.mjs",
+  "RELEASE_NOTES.md",
+  "GITHUB_RELEASE_TEMPLATE.md",
+  "V1_RELEASE_CHECKLIST.md",
   "electron/main.mjs",
   "README.md",
   "使用教程.md",
@@ -53,6 +56,9 @@ const readmeMd = await fs.readFile(path.join(root, "README.md"), "utf8");
 const tutorialMd = await fs.readFile(path.join(root, "使用教程.md"), "utf8");
 const roadmapMd = await fs.readFile(path.join(root, "ROADMAP.md"), "utf8");
 const currentIterationMd = await fs.readFile(path.join(root, "CURRENT_ITERATION.md"), "utf8");
+const releaseNotesMd = await fs.readFile(path.join(root, "RELEASE_NOTES.md"), "utf8");
+const releaseTemplateMd = await fs.readFile(path.join(root, "GITHUB_RELEASE_TEMPLATE.md"), "utf8");
+const v1ChecklistMd = await fs.readFile(path.join(root, "V1_RELEASE_CHECKLIST.md"), "utf8");
 
 const requiredUiMarkers = [
   ["index.html", "id=\"toggleAiConfig\""],
@@ -209,6 +215,7 @@ const requiredUiMarkers = [
   ["README.md", "降 AI 感专项修订"],
   ["README.md", "项目导入/导出"],
   ["README.md", "记忆 JSON 自动修复"],
+  ["README.md", "v1.0.0"],
   ["README.md", "v0.3.0"],
   ["README.md", "memory_pins.json"],
   ["README.md", "memory_exclusions.json"],
@@ -226,11 +233,16 @@ const requiredUiMarkers = [
   ["ROADMAP.md", "降 AI 感专项修订。已完成。"],
   ["ROADMAP.md", "v0.9.0"],
   ["ROADMAP.md", "项目导入/导出。已完成。"],
+  ["ROADMAP.md", "v1.0.0"],
+  ["ROADMAP.md", "正式发布版。已完成。"],
   ["ROADMAP.md", "召回结果手动钉选：把人物、伏笔、承诺固定为本章必读。已完成。"],
-  ["CURRENT_ITERATION.md", "当前迭代：v0.9.0"],
-  ["CURRENT_ITERATION.md", "项目导入/导出"],
-  ["CURRENT_ITERATION.md", "记忆 JSON 自动修复"],
-  ["CURRENT_ITERATION.md", "项目损坏诊断"],
+  ["CURRENT_ITERATION.md", "当前迭代：v1.0.0"],
+  ["CURRENT_ITERATION.md", "正式发布版"],
+  ["CURRENT_ITERATION.md", "GitHub Release"],
+  ["CURRENT_ITERATION.md", "Windows x64"],
+  ["RELEASE_NOTES.md", "v1.0.0"],
+  ["GITHUB_RELEASE_TEMPLATE.md", "本地小说工坊 v1.0.0"],
+  ["V1_RELEASE_CHECKLIST.md", "正式发布检查清单"],
   ["server.mjs", "parts[3] === \"narrative-radar\""],
   ["server.mjs", "function analyzeNarrativeRadar"],
   ["electron/main.mjs", "app-icon.ico"],
@@ -269,6 +281,9 @@ function sourceFor(file) {
   if (file === "使用教程.md") return tutorialMd;
   if (file === "ROADMAP.md") return roadmapMd;
   if (file === "CURRENT_ITERATION.md") return currentIterationMd;
+  if (file === "RELEASE_NOTES.md") return releaseNotesMd;
+  if (file === "GITHUB_RELEASE_TEMPLATE.md") return releaseTemplateMd;
+  if (file === "V1_RELEASE_CHECKLIST.md") return v1ChecklistMd;
   return stylesCss;
 }
 

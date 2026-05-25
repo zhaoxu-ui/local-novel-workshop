@@ -1,26 +1,26 @@
-# 当前迭代：v0.9.0 项目安全与迁移版
+# 当前迭代：v1.0.0 正式发布版
 
 开始日期：2026-05-26
 
 ## 迭代目标
 
-让项目能跨电脑迁移，并能在损坏时自检和修复。
+把本地小说工坊整理为可公开发布的本地化 AI 小说创作工作台，补齐 GitHub Release、Windows x64 发布清单、教程和安全检查。
 
 ## 权重排序
 
 | 权重 | 工作项 | 状态 |
 | ---: | --- | --- |
-| 64 | 项目导入/导出 | 已完成 |
-| 62 | 备份恢复向导清单 | 已完成 |
-| 60 | 记忆 JSON 自动修复 | 已完成 |
-| 58 | 项目损坏诊断 | 已完成 |
+| 100 | README、使用教程和版本路线同步到 v1.0.0 | 已完成 |
+| 96 | GitHub Release 模板和发布说明 | 已完成 |
+| 94 | Windows x64 安装包发布清单 | 已完成 |
+| 92 | 发布检查确认不包含本地项目数据和敏感配置 | 已完成 |
 
 ## 本轮已完成
 
-- 新增 `POST /api/projects/:id/portable-export`。
-- 新增 `POST /api/projects/:id/memory-repair`。
-- 新增 `POST /api/projects/:id/integrity-check`。
-- “项目维护”区域新增导出迁移包、记忆 JSON 自动修复和项目损坏诊断。
+- 新增 `RELEASE_NOTES.md`。
+- 新增 `GITHUB_RELEASE_TEMPLATE.md`。
+- 新增 `V1_RELEASE_CHECKLIST.md`。
+- 版本号提升到 `1.0.0`。
 
 ## 出口标准
 
