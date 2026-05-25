@@ -141,6 +141,9 @@ const el = {
   versionPanel: document.querySelector("#versionPanel"),
   doctorPanel: document.querySelector("#doctorPanel"),
   runDoctor: document.querySelector("#runDoctor"),
+  diagnosticsPanel: document.querySelector("#diagnosticsPanel"),
+  runMemorySchemaCheck: document.querySelector("#runMemorySchemaCheck"),
+  generateDiagnosticsReport: document.querySelector("#generateDiagnosticsReport"),
   pipelineFlow: document.querySelector("#pipelineFlow"),
   runDetailPanel: document.querySelector("#runDetailPanel"),
   syncReviewPanel: document.querySelector("#syncReviewPanel"),
@@ -3036,6 +3039,48 @@ async function runDoctor(showStatus = true) {
   }
 }
 
+async function runMemorySchemaCheck() {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/memory-schema-check`);
+    if (el.diagnosticsPanel) {
+      el.diagnosticsPanel.classList.remove("muted");
+      el.diagnosticsPanel.innerHTML = `
+        <div class="doctor-row ${data.ok ? "ok" : "warn"}">
+          <span>${data.ok ? "✓" : "!"}</span>
+          <strong>长期记忆校验</strong>
+          <em>${escapeHtml(data.ok ? "通过" : "需处理")}</em>
+        </div>
+        ${(data.files || []).map((item) => `
+          <div class="doctor-row ${item.ok ? "ok" : "warn"}">
+            <span>${item.ok ? "✓" : "!"}</span>
+            <strong>${escapeHtml(item.file)}</strong>
+            <em>${escapeHtml((item.issues || []).join("；") || "通过")}</em>
+          </div>
+        `).join("")}
+      `;
+    }
+    setStatus(data.ok ? "长期记忆校验通过。" : "长期记忆校验发现需要处理的问题。");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function generateDiagnosticsReport() {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  const data = await workflowPost("diagnostics-report", {}, "故障诊断报告已生成。", "maintenance");
+  if (el.diagnosticsPanel && data?.reportFile) {
+    el.diagnosticsPanel.classList.remove("muted");
+    el.diagnosticsPanel.innerHTML = `
+      <div class="doctor-row ${data.memory?.ok ? "ok" : "warn"}">
+        <span>${data.memory?.ok ? "✓" : "!"}</span>
+        <strong>故障诊断报告</strong>
+        <em>${escapeHtml(data.reportFile)}</em>
+      </div>
+    `;
+  }
+}
+
 function renderDoctor(doctor) {
   el.doctorPanel.classList.remove("muted");
   const mode = el.pipelineRunner?.value || "codex";
@@ -3114,6 +3159,8 @@ on(el.storyBibleSection, "change", renderStoryBible);
 on(el.saveStoryBibleEntry, "click", saveStoryBibleEntry);
 on(el.refreshStoryBible, "click", () => loadStoryBible(true));
 on(el.runDoctor, "click", () => runDoctor(true));
+on(el.runMemorySchemaCheck, "click", runMemorySchemaCheck);
+on(el.generateDiagnosticsReport, "click", generateDiagnosticsReport);
 on(el.createProject, "click", createProject);
 on(el.fileSelect, "change", loadSelectedFile);
 on(el.saveChapterPlan, "click", saveChapterPlan);

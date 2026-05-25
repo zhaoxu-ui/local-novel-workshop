@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { MEMORY_SCHEMAS, validateMemoryPayload } from "./server/modules/memory.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -2124,6 +2125,77 @@ async function generateReleaseNotes(projectId) {
 - 不包含用户项目数据、本地环境变量、Codex 配置或 cc-switch 配置。
 `);
   return { file, version: pkg.version };
+}
+
+async function validateProjectMemorySchemas(projectId) {
+  const files = [];
+  for (const file of Object.keys(MEMORY_SCHEMAS)) {
+    const full = projectPath(projectId, ...file.split("/"));
+    if (!(await exists(full))) {
+      files.push({ file, ok: false, exists: false, issues: ["文件不存在"] });
+      continue;
+    }
+    try {
+      const payload = JSON.parse(await fs.readFile(full, "utf8"));
+      const result = validateMemoryPayload(file, payload);
+      files.push({ file, ok: result.ok, exists: true, issues: result.issues });
+    } catch (error) {
+      files.push({ file, ok: false, exists: true, issues: [`JSON 解析失败：${error.message}`] });
+    }
+  }
+  const ok = files.every((item) => item.ok || !MEMORY_SCHEMAS[item.file]?.requiredRoot);
+  return { ok, files };
+}
+
+async function generateDiagnosticsReport(projectId) {
+  const doctor = await runProjectDoctor(projectId);
+  const memory = await validateProjectMemorySchemas(projectId);
+  const tasks = await listProjectTasks(projectId);
+  const failedTasks = tasks.filter((task) => ["failed", "cancelled"].includes(task.status)).slice(0, 12);
+  const reportFile = `09_运行时/故障诊断报告_${timestampId()}.md`;
+  const memoryRows = memory.files.map((item) => `| ${item.ok ? "通过" : "需处理"} | ${item.file} | ${item.issues.join("；") || "-"} |`).join("\n");
+  const taskRows = failedTasks.map((task) => `| ${taskStatusLabelForReport(task.status)} | ${task.kind} | ${task.title || ""} | ${task.detail || ""} |`).join("\n");
+  await writeProjectFile(projectId, reportFile, `# 故障诊断报告
+
+生成时间：${new Date().toISOString()}
+
+## 配置诊断
+
+- 汇总：${doctor.summaryOk ? "通过" : "需关注"}
+- Codex 命令：${doctor.codexCommand ? "可用" : "未找到"}
+- 本地模型接口：${doctor.modelEndpoint?.message || "未检查"}
+- 缺失核心文件：${doctor.missingCoreFiles?.length || 0}
+
+## 长期记忆 JSON schema 校验
+
+| 状态 | 文件 | 问题 |
+| --- | --- | --- |
+${memoryRows}
+
+## 失败或取消任务
+
+| 状态 | 类型 | 标题 | 详情 |
+| --- | --- | --- | --- |
+${taskRows || "| - | - | 暂无 | - |"}
+
+## 建议
+
+- 先修复 schema 失败的长期记忆文件。
+- 对失败任务使用任务中心详情查看产物，再决定重试或人工处理。
+- 若 Codex 不可用，先切换本地模型或修复本机 Codex/cc-switch 配置。
+`);
+  return { reportFile, doctor, memory, failedTasks };
+}
+
+function taskStatusLabelForReport(status) {
+  return {
+    completed: "完成",
+    running: "运行中",
+    failed: "失败",
+    cancelled: "已取消",
+    pending: "等待中",
+    needs_review: "需复核"
+  }[status] || status || "未知";
 }
 
 async function runBatchOperation(projectId, { task = "quality", from = "", to = "" } = {}) {
@@ -5389,6 +5461,22 @@ async function routeApi(req, res, url) {
 
     if (req.method === "GET" && parts[3] === "doctor") {
       return sendJson(res, 200, { doctor: await runProjectDoctor(projectId) });
+    }
+
+    if (req.method === "GET" && parts[3] === "memory-schema-check") {
+      return sendJson(res, 200, await validateProjectMemorySchemas(projectId));
+    }
+
+    if (req.method === "POST" && parts[3] === "diagnostics-report") {
+      const result = await generateDiagnosticsReport(projectId);
+      await recordProjectTask(projectId, {
+        kind: "maintenance",
+        status: result.memory?.ok ? "completed" : "needs_review",
+        title: "故障诊断报告",
+        detail: result.reportFile,
+        files: [result.reportFile]
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }
 
     if (req.method === "GET" && parts[3] === "runs") {

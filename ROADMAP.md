@@ -10,7 +10,7 @@
 | v0.3.0 | 92 | 可控记忆版 | 增强召回结果控制、状态同步安全和故事圣经编辑。 |
 | v0.4.0 | 86 | 任务队列版 | 增加任务取消、失败重试、自动刷新和任务筛选。已完成。 |
 | v0.5.0 | 78 | 发布准备版 | 增加发布前总检查、完整备份包和安装包发布规范。已完成。 |
-| v0.6.0 | 70 | 工程治理版 | 拆分大型文件，补 UI 自动化测试和 JSON schema 校验。 |
+| v0.6.0 | 70 | 工程治理版 | 拆分大型文件，补 UI 自动化测试和 JSON schema 校验。已完成。 |
 
 ## v0.2.0 创作闭环稳定版
 
@@ -97,11 +97,11 @@ npm run prepare:github
 
 | 权重 | 候选项 |
 | ---: | --- |
-| 70 | 拆分 `server.mjs` 为 project、memory、pipeline、quality、export、codex-runner。 |
-| 68 | 拆分 `public/app.js` 为 api、state、render、actions、panels。 |
-| 66 | 增加浏览器 E2E 测试。 |
-| 64 | JSON schema 校验长期记忆文件。 |
-| 60 | 错误日志面板和故障诊断报告。 |
+| 70 | 拆分 `server.mjs` 为 project、memory、pipeline、quality、export、codex-runner。已完成。 |
+| 68 | 拆分 `public/app.js` 为 api、state、render、actions、panels。已完成。 |
+| 66 | 增加浏览器 E2E 测试。已完成。 |
+| 64 | JSON schema 校验长期记忆文件。已完成。 |
+| 60 | 错误日志面板和故障诊断报告。已完成。 |
 
 ## 版本推进规则
 

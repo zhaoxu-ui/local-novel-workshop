@@ -71,6 +71,11 @@ try {
     method: "POST",
     body: JSON.stringify({})
   });
+  const memorySchemaCheck = await api(`/api/projects/${encodeURIComponent(id)}/memory-schema-check`);
+  const diagnosticsReport = await api(`/api/projects/${encodeURIComponent(id)}/diagnostics-report`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
   const batch = await api(`/api/projects/${encodeURIComponent(id)}/batch`, {
     method: "POST",
     body: JSON.stringify({ task: "quality", from: 1, to: 1 })
@@ -262,6 +267,7 @@ try {
     releaseBackup.manifestFile,
     releasePackage.manifestFile,
     releaseNotes.file,
+    diagnosticsReport.reportFile,
     batch.file,
     exported.file,
     conflicts.reportFile,
@@ -299,6 +305,12 @@ try {
   }
   if (!releaseBackup.filesCopied || !releaseBackup.manifestFile?.includes("完整备份包")) {
     throw new Error("项目完整备份包未生成");
+  }
+  if (!Array.isArray(memorySchemaCheck.files) || !memorySchemaCheck.files.some((item) => item.file === "04_连续性/character_state.json")) {
+    throw new Error("长期记忆 JSON schema 校验未返回核心文件");
+  }
+  if (!diagnosticsReport.reportFile?.includes("故障诊断报告")) {
+    throw new Error("故障诊断报告未生成");
   }
   const styleMemory = JSON.parse(await fs.readFile(path.join(projectDir, "04_连续性", "style_memory.json"), "utf8"));
   if (!styleMemory.imitationProfile?.rhythm || !styleMemory.imitationProfile?.guardrails?.length) {
