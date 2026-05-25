@@ -214,7 +214,28 @@ try {
     body: JSON.stringify({ chapterNo: 2, title: "风格测试", brief: "林岚拿着钥匙靠近门后笑声。" })
   });
   const search = await api(`/api/projects/${encodeURIComponent(id)}/search?q=${encodeURIComponent("钥匙")}`);
+  const taskIndexPath = path.join(projectDir, "09_运行时", "tasks.json");
+  const seededTaskIndex = JSON.parse(await fs.readFile(taskIndexPath, "utf8"));
+  const failedTask = {
+    id: "quality:failed-regression",
+    source: "task-index",
+    kind: "quality",
+    status: "failed",
+    title: "失败质检回归任务",
+    detail: "回归测试失败任务",
+    files: [quality.reportFile],
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+  seededTaskIndex.tasks = [failedTask, ...(seededTaskIndex.tasks || []).filter((item) => item.id !== failedTask.id)];
+  await fs.writeFile(taskIndexPath, JSON.stringify(seededTaskIndex, null, 2) + "\n", "utf8");
   const tasks = await api(`/api/projects/${encodeURIComponent(id)}/tasks`);
+  const failedQualityTasks = await api(`/api/projects/${encodeURIComponent(id)}/tasks?kind=quality&status=failed`);
+  const failedTaskDetail = await api(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(failedTask.id)}`);
+  const retriedTask = await api(`/api/projects/${encodeURIComponent(id)}/tasks/${encodeURIComponent(failedTask.id)}/retry`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
   const radar = await api(`/api/projects/${encodeURIComponent(id)}/narrative-radar`);
 
   const requiredFiles = [
@@ -237,10 +258,18 @@ try {
   if (!tasks.tasks?.some((item) => item.kind === "revision" && item.files?.includes(revisionTask.taskFile))) {
     throw new Error("任务中心未返回修订任务单");
   }
-  const taskIndexPath = path.join(projectDir, "09_运行时", "tasks.json");
   const taskIndex = JSON.parse(await fs.readFile(taskIndexPath, "utf8"));
   if (!Array.isArray(taskIndex.tasks) || taskIndex.tasks.length < 4) {
     throw new Error("统一任务索引未记录核心任务");
+  }
+  if (!failedQualityTasks.tasks?.some((item) => item.id === failedTask.id)) {
+    throw new Error("任务中心筛选未返回失败质检任务");
+  }
+  if (failedTaskDetail.task?.id !== failedTask.id || !failedTaskDetail.preview?.files?.length) {
+    throw new Error("任务详情接口未返回任务详情和产物预览");
+  }
+  if (retriedTask.task?.status !== "completed" || retriedTask.task?.retriedFrom !== failedTask.id) {
+    throw new Error("失败任务一键重试未生成完成记录");
   }
   if (!tasks.tasks?.some((item) => item.source === "task-index" && item.kind === "quality")) {
     throw new Error("任务中心未优先返回统一任务索引记录");

@@ -2278,7 +2278,12 @@ function normalizeTaskRecord(task = {}) {
     files,
     startedAt: task.startedAt || task.createdAt || now,
     finishedAt: task.finishedAt || (["completed", "success", "ready"].includes(status) ? now : ""),
-    updatedAt: task.updatedAt || now
+    updatedAt: task.updatedAt || now,
+    retryOf: task.retryOf || task.retriedFrom || "",
+    retriedFrom: task.retriedFrom || task.retryOf || "",
+    attempts: Number(task.attempts || 0),
+    error: String(task.error || ""),
+    nextAction: String(task.nextAction || "")
   };
 }
 
@@ -2295,6 +2300,17 @@ async function recordProjectTask(projectId, task) {
   const index = await readProjectTaskIndex(projectId);
   const next = normalizeTaskRecord(task);
   const tasks = [next, ...index.tasks.filter((item) => item.id !== next.id)]
+    .sort((a, b) => String(b.updatedAt || b.finishedAt || b.startedAt || b.detail).localeCompare(String(a.updatedAt || a.finishedAt || a.startedAt || a.detail), "zh-Hans-CN"))
+    .slice(0, 100);
+  await writeProjectFile(projectId, TASK_INDEX_FILE, JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), tasks }, null, 2) + "\n");
+  return next;
+}
+
+async function updateProjectTask(projectId, taskId, patch = {}) {
+  const index = await readProjectTaskIndex(projectId);
+  const current = index.tasks.find((item) => item.id === taskId);
+  const next = normalizeTaskRecord({ ...(current || { id: taskId }), ...patch, id: taskId, updatedAt: new Date().toISOString() });
+  const tasks = [next, ...index.tasks.filter((item) => item.id !== taskId)]
     .sort((a, b) => String(b.updatedAt || b.finishedAt || b.startedAt || b.detail).localeCompare(String(a.updatedAt || a.finishedAt || a.startedAt || a.detail), "zh-Hans-CN"))
     .slice(0, 100);
   await writeProjectFile(projectId, TASK_INDEX_FILE, JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), tasks }, null, 2) + "\n");
@@ -2385,6 +2401,165 @@ async function listProjectTasks(projectId, files = null) {
   }));
 
   return mergeTaskLists(taskIndex.tasks, runTasks, syncTasks, revisionTasks, qualityReports);
+}
+
+async function filterProjectTasks(projectId, filters = {}) {
+  const tasks = await listProjectTasks(projectId);
+  const kind = String(filters.kind || "all");
+  const status = String(filters.status || "all");
+  const filtered = tasks.filter((task) => {
+    const kindOk = kind === "all" || task.kind === kind;
+    const statusOk = status === "all" || task.status === status;
+    return kindOk && statusOk;
+  });
+  const summary = tasks.reduce((acc, task) => {
+    acc.total += 1;
+    acc.byKind[task.kind] = (acc.byKind[task.kind] || 0) + 1;
+    acc.byStatus[task.status] = (acc.byStatus[task.status] || 0) + 1;
+    return acc;
+  }, { total: 0, byKind: {}, byStatus: {} });
+  return { tasks: filtered, summary, filters: { kind, status } };
+}
+
+async function findProjectTask(projectId, taskId) {
+  const tasks = await listProjectTasks(projectId);
+  return tasks.find((task) => task.id === taskId);
+}
+
+async function readProjectTaskDetail(projectId, taskId) {
+  const task = await findProjectTask(projectId, taskId);
+  if (!task) {
+    const err = new Error("任务不存在");
+    err.status = 404;
+    throw err;
+  }
+  const files = [];
+  for (const file of task.files || []) {
+    if (!file || !(await exists(projectPath(projectId, ...file.split("/"))))) continue;
+    const content = await readProjectFile(projectId, file).catch(() => "");
+    files.push({
+      file,
+      chars: content.length,
+      preview: content.slice(0, 1200)
+    });
+  }
+  return {
+    task,
+    preview: {
+      files,
+      runtimeDir: task.runtimeDir || "",
+      nextAction: task.nextAction || (task.status === "failed" ? "可尝试重试，或打开产物查看失败原因。" : "")
+    }
+  };
+}
+
+async function retryProjectTask(projectId, taskId) {
+  const detail = await readProjectTaskDetail(projectId, taskId);
+  const task = detail.task;
+  const now = new Date().toISOString();
+  if (task.kind === "quality") {
+    const result = await runPublishQualityCheck(projectId, { scope: "all" });
+    const retryTask = await recordProjectTask(projectId, {
+      id: `${task.kind}:retry:${timestampId()}`,
+      kind: "quality",
+      status: "completed",
+      title: "重试发布前质检",
+      detail: result.reportFile,
+      files: [result.reportFile],
+      retriedFrom: task.id,
+      retryOf: task.id,
+      attempts: Number(task.attempts || 0) + 1,
+      startedAt: now,
+      finishedAt: new Date().toISOString()
+    });
+    return { task: retryTask, result, project: await readProject(projectId) };
+  }
+  if (task.kind === "publish") {
+    const result = await generatePublishMaterials(projectId, { platform: "通用" });
+    const retryTask = await recordProjectTask(projectId, {
+      id: `${task.kind}:retry:${timestampId()}`,
+      kind: "publish",
+      status: "completed",
+      title: "重试发布资料包",
+      detail: result.file,
+      files: [result.file],
+      retriedFrom: task.id,
+      retryOf: task.id,
+      attempts: Number(task.attempts || 0) + 1,
+      startedAt: now,
+      finishedAt: new Date().toISOString()
+    });
+    return { task: retryTask, result, project: await readProject(projectId) };
+  }
+  if (task.kind === "codex") {
+    const taskFile = (task.files || []).find((file) => file.endsWith("Codex任务单.md")) || "07_Codex/Codex任务单.md";
+    if (await exists(projectPath(projectId, ...taskFile.split("/")))) {
+      const taskContent = await readProjectFile(projectId, taskFile);
+      const run = await runCodexForProject(projectId, taskContent);
+      const retryTask = await recordProjectTask(projectId, {
+        id: `codex:${run.runId}`,
+        kind: "codex",
+        status: "running",
+        title: "重试 Codex 任务",
+        detail: run.finalFile || run.logFile,
+        files: [run.taskFile, run.promptFile, run.logFile, run.finalFile, run.statusFile],
+        retriedFrom: task.id,
+        retryOf: task.id,
+        attempts: Number(task.attempts || 0) + 1,
+        startedAt: now
+      });
+      return { task: retryTask, run, project: await readProject(projectId) };
+    }
+  }
+  const retryTask = await recordProjectTask(projectId, {
+    id: `${task.kind}:retry:${timestampId()}`,
+    kind: task.kind,
+    status: "pending",
+    title: `待人工重跑：${task.title || taskTitleForKind(task.kind)}`,
+    detail: task.detail,
+    files: task.files || [],
+    retriedFrom: task.id,
+    retryOf: task.id,
+    attempts: Number(task.attempts || 0) + 1,
+    startedAt: now,
+    nextAction: "当前任务缺少可自动复现的参数，请按原入口重新运行。"
+  });
+  return { task: retryTask, project: await readProject(projectId) };
+}
+
+async function cancelProjectTask(projectId, taskId) {
+  const task = await findProjectTask(projectId, taskId);
+  if (!task) {
+    const err = new Error("任务不存在");
+    err.status = 404;
+    throw err;
+  }
+  let cancelled = false;
+  let message = "该任务当前不可取消。";
+  if (task.kind === "codex") {
+    const runId = task.id.startsWith("codex:") ? task.id.slice("codex:".length) : "";
+    const statusFile = runId ? projectPath(projectId, "07_Codex", `run_${runId}_status.json`) : "";
+    const status = statusFile ? await readJsonIfExists(statusFile) : null;
+    if (status?.status === "running") {
+      if (status.pid) {
+        try {
+          process.kill(Number(status.pid));
+        } catch {}
+      }
+      await fs.writeFile(statusFile, JSON.stringify({ ...status, status: "cancelled", cancelledAt: new Date().toISOString() }, null, 2), "utf8");
+      cancelled = true;
+      message = "Codex 任务已请求取消。";
+    } else {
+      message = "Codex 任务不在运行中。";
+    }
+  }
+  const next = await updateProjectTask(projectId, task.id, {
+    ...task,
+    status: cancelled ? "cancelled" : task.status,
+    nextAction: message,
+    finishedAt: cancelled ? new Date().toISOString() : task.finishedAt
+  });
+  return { cancelled, message, task: next };
 }
 
 async function searchProjectFiles(projectId, query) {
@@ -5031,8 +5206,22 @@ async function routeApi(req, res, url) {
       return sendJson(res, 200, { runs: await listCodexRuns(projectId) });
     }
 
-    if (req.method === "GET" && parts[3] === "tasks") {
-      return sendJson(res, 200, { tasks: await listProjectTasks(projectId) });
+    if (parts[3] === "tasks") {
+      if (req.method === "GET" && parts[4]) {
+        return sendJson(res, 200, await readProjectTaskDetail(projectId, parts[4]));
+      }
+      if (req.method === "POST" && parts[4] && parts[5] === "retry") {
+        return sendJson(res, 200, await retryProjectTask(projectId, parts[4]));
+      }
+      if (req.method === "POST" && parts[4] && parts[5] === "cancel") {
+        return sendJson(res, 200, await cancelProjectTask(projectId, parts[4]));
+      }
+      if (req.method === "GET") {
+        return sendJson(res, 200, await filterProjectTasks(projectId, {
+          kind: url.searchParams.get("kind") || "all",
+          status: url.searchParams.get("status") || "all"
+        }));
+      }
     }
 
     if (req.method === "GET" && parts[3] === "search") {

@@ -8,6 +8,13 @@ const state = {
   qualityReport: null,
   versions: [],
   tasks: [],
+  taskSummary: null,
+  taskDetail: null,
+  taskAutoRefreshTimer: null,
+  taskFilters: {
+    kind: "all",
+    status: "all"
+  },
   searchResults: [],
   narrativeRadar: null,
   memoryRecallResult: null,
@@ -97,7 +104,11 @@ const el = {
   runGlobalSearch: document.querySelector("#runGlobalSearch"),
   globalSearchResults: document.querySelector("#globalSearchResults"),
   refreshTaskCenter: document.querySelector("#refreshTaskCenter"),
+  taskKindFilter: document.querySelector("#taskKindFilter"),
+  taskStatusFilter: document.querySelector("#taskStatusFilter"),
+  taskAutoRefresh: document.querySelector("#taskAutoRefresh"),
   taskCenterPanel: document.querySelector("#taskCenterPanel"),
+  taskDetailPanel: document.querySelector("#taskDetailPanel"),
   runNarrativeRadar: document.querySelector("#runNarrativeRadar"),
   narrativeRadarPanel: document.querySelector("#narrativeRadarPanel"),
   projectStats: document.querySelector("#projectStats"),
@@ -555,6 +566,7 @@ function taskStatusLabel(status) {
     ready: "可处理",
     running: "运行中",
     failed: "失败",
+    cancelled: "已取消",
     needs_review: "需复核",
     pending_review: "待审核",
     pending: "等待中"
@@ -578,6 +590,16 @@ function taskKindLabel(kind) {
   }[kind] || kind || "任务";
 }
 
+function filteredTasks() {
+  const kind = el.taskKindFilter?.value || state.taskFilters.kind || "all";
+  const status = el.taskStatusFilter?.value || state.taskFilters.status || "all";
+  return (state.tasks || []).filter((task) => {
+    const kindOk = kind === "all" || task.kind === kind;
+    const statusOk = status === "all" || task.status === status;
+    return kindOk && statusOk;
+  });
+}
+
 function renderTaskCenter() {
   if (!el.taskCenterPanel) return;
   if (!state.activeProject) {
@@ -585,9 +607,9 @@ function renderTaskCenter() {
     el.taskCenterPanel.classList.add("muted");
     return;
   }
-  const tasks = state.tasks || [];
+  const tasks = filteredTasks();
   if (!tasks.length) {
-    el.taskCenterPanel.textContent = "暂无任务记录。运行流水线、修订、质检或 Codex 直连后会显示在这里。";
+    el.taskCenterPanel.textContent = "暂无匹配任务。可以调整类型/状态筛选，或运行流水线、修订、质检后再刷新。";
     el.taskCenterPanel.classList.add("muted");
     return;
   }
@@ -604,10 +626,54 @@ function renderTaskCenter() {
         <strong>${escapeHtml(task.title || "任务")}</strong>
         <em>${escapeHtml(task.detail || task.runtimeDir || "")}</em>
       </div>
-      <button type="button"${file ? "" : " disabled"}>打开产物</button>
+      <div class="task-actions">
+        <button type="button" data-task-detail="${escapeAttr(task.id)}">详情</button>
+        <button type="button" data-task-open="${escapeAttr(file || "")}"${file ? "" : " disabled"}>打开产物</button>
+        <button type="button" data-task-retry="${escapeAttr(task.id)}"${task.status === "failed" ? "" : " disabled"}>重试</button>
+        <button type="button" data-task-cancel="${escapeAttr(task.id)}"${task.status === "running" ? "" : " disabled"}>取消</button>
+      </div>
     `;
-    row.querySelector("button")?.addEventListener("click", () => file && openFileByPath(file));
+    row.querySelector("[data-task-detail]")?.addEventListener("click", () => loadTaskDetail(task.id));
+    row.querySelector("[data-task-open]")?.addEventListener("click", () => file && openFileByPath(file));
+    row.querySelector("[data-task-retry]")?.addEventListener("click", () => retryTask(task.id));
+    row.querySelector("[data-task-cancel]")?.addEventListener("click", () => cancelTask(task.id));
     el.taskCenterPanel.appendChild(row);
+  }
+}
+
+function renderTaskDetail() {
+  if (!el.taskDetailPanel) return;
+  if (!state.activeProject) {
+    el.taskDetailPanel.textContent = "选择项目后查看任务详情";
+    el.taskDetailPanel.classList.add("muted");
+    return;
+  }
+  const detail = state.taskDetail;
+  if (!detail?.task) {
+    el.taskDetailPanel.textContent = "选择一条任务查看日志、产物、错误和下一步。";
+    el.taskDetailPanel.classList.add("muted");
+    return;
+  }
+  const task = detail.task;
+  const files = detail.preview?.files || [];
+  el.taskDetailPanel.classList.remove("muted");
+  el.taskDetailPanel.innerHTML = `
+    <div class="task-detail-head">
+      <strong>${escapeHtml(task.title || "任务详情")}</strong>
+      <span>${escapeHtml(taskKindLabel(task.kind))} · ${escapeHtml(taskStatusLabel(task.status))}</span>
+    </div>
+    <p>${escapeHtml(task.detail || task.runtimeDir || "")}</p>
+    ${task.error ? `<p class="task-error">${escapeHtml(task.error)}</p>` : ""}
+    ${detail.preview?.nextAction ? `<p>${escapeHtml(detail.preview.nextAction)}</p>` : ""}
+    <div class="task-detail-files">
+      ${files.length ? files.map((item) => `
+        <button type="button" data-task-file="${escapeAttr(item.file)}">${escapeHtml(item.file)}</button>
+        <pre>${escapeHtml(item.preview || "")}</pre>
+      `).join("") : "<span class=\"muted\">暂无可预览产物</span>"}
+    </div>
+  `;
+  for (const button of el.taskDetailPanel.querySelectorAll("[data-task-file]")) {
+    button.addEventListener("click", () => openFileByPath(button.dataset.taskFile));
   }
 }
 
@@ -692,11 +758,85 @@ async function runNarrativeRadar() {
 async function refreshTaskCenter() {
   if (!state.activeProject) return;
   try {
-    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/tasks`);
+    state.taskFilters.kind = el.taskKindFilter?.value || "all";
+    state.taskFilters.status = el.taskStatusFilter?.value || "all";
+    const query = new URLSearchParams();
+    if (state.taskFilters.kind !== "all") query.set("kind", state.taskFilters.kind);
+    if (state.taskFilters.status !== "all") query.set("status", state.taskFilters.status);
+    const suffix = query.toString() ? `?${query}` : "";
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/tasks${suffix}`);
     state.tasks = data.tasks || [];
+    state.taskSummary = data.summary || null;
     renderTaskCenter();
+    renderTaskDetail();
   } catch (error) {
     setStatus(error.message, "error");
+  }
+}
+
+async function loadTaskDetail(taskId) {
+  if (!state.activeProject || !taskId) return;
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/tasks/${encodeURIComponent(taskId)}`);
+    state.taskDetail = data;
+    renderTaskDetail();
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function retryTask(taskId) {
+  if (!state.activeProject || !taskId) return;
+  setBusy(true);
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/tasks/${encodeURIComponent(taskId)}/retry`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    if (data.project) {
+      state.activeProject = data.project;
+      state.files = data.project.files || [];
+      state.chapters = data.project.chapters || [];
+    }
+    state.taskDetail = { task: data.task, preview: { files: [], nextAction: data.task?.nextAction || "" } };
+    renderFiles();
+    renderProjectStats();
+    await refreshTaskCenter();
+    setStatus(data.task?.status === "pending" ? "已生成待人工重跑任务。" : "任务已重试。");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function cancelTask(taskId) {
+  if (!state.activeProject || !taskId) return;
+  setBusy(true);
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/tasks/${encodeURIComponent(taskId)}/cancel`, {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    state.taskDetail = { task: data.task, preview: { files: [], nextAction: data.message || "" } };
+    await refreshTaskCenter();
+    setStatus(data.message || "任务取消请求已发送。");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function setTaskAutoRefresh() {
+  if (state.taskAutoRefreshTimer) {
+    clearInterval(state.taskAutoRefreshTimer);
+    state.taskAutoRefreshTimer = null;
+  }
+  if (el.taskAutoRefresh?.checked) {
+    state.taskAutoRefreshTimer = setInterval(() => {
+      if (state.activeProject) refreshTaskCenter();
+    }, 8000);
   }
 }
 
@@ -882,6 +1022,7 @@ async function loadProject(id) {
   state.workflowResult = null;
   state.versions = [];
   state.tasks = [];
+  state.taskDetail = null;
   state.searchResults = [];
   state.narrativeRadar = null;
   state.storyBible = null;
@@ -909,6 +1050,7 @@ async function loadProject(id) {
   renderVersions();
   renderGlobalSearchResults();
   renderTaskCenter();
+  renderTaskDetail();
   renderNarrativeRadar();
   renderStoryBible();
   renderStyleProfileResult();
@@ -2958,6 +3100,9 @@ on(el.globalSearchInput, "keydown", (event) => {
   if (event.key === "Enter") runGlobalSearch();
 });
 on(el.refreshTaskCenter, "click", refreshTaskCenter);
+on(el.taskKindFilter, "change", refreshTaskCenter);
+on(el.taskStatusFilter, "change", refreshTaskCenter);
+on(el.taskAutoRefresh, "change", setTaskAutoRefresh);
 on(el.runNarrativeRadar, "click", runNarrativeRadar);
 on(el.createSnapshot, "click", createSnapshot);
 on(el.runQualityCheck, "click", runQualityCheck);
@@ -3000,6 +3145,7 @@ updateAiModeVisibility();
 setToolboxGroup(state.activeToolGroup || "write");
 renderGlobalSearchResults();
 renderTaskCenter();
+renderTaskDetail();
 renderNarrativeRadar();
 renderStoryBible();
 renderStyleProfileResult();

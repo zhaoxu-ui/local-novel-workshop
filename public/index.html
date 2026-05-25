@@ -199,8 +199,35 @@
 
             <section class="panel compact-panel" data-tool-group="write project system" data-tool-panel="task-center">
               <h2>AI 任务中心</h2>
-              <button id="refreshTaskCenter">刷新任务</button>
+              <div class="task-toolbar">
+                <select id="taskKindFilter" title="任务类型">
+                  <option value="all">全部类型</option>
+                  <option value="codex">Codex</option>
+                  <option value="pipeline">流水线</option>
+                  <option value="quality">质检</option>
+                  <option value="revision">修订</option>
+                  <option value="publish">发布</option>
+                  <option value="maintenance">维护</option>
+                </select>
+                <select id="taskStatusFilter" title="任务状态">
+                  <option value="all">全部状态</option>
+                  <option value="running">运行中</option>
+                  <option value="failed">失败</option>
+                  <option value="pending">等待中</option>
+                  <option value="ready">可处理</option>
+                  <option value="completed">完成</option>
+                  <option value="cancelled">已取消</option>
+                </select>
+              </div>
+              <div class="task-toolbar">
+                <button id="refreshTaskCenter">刷新任务</button>
+                <label class="inline-check">
+                  <input id="taskAutoRefresh" type="checkbox" />
+                  自动刷新
+                </label>
+              </div>
               <div id="taskCenterPanel" class="task-center muted">选择项目后显示 Codex 运行历史、流水线、修订和质检任务</div>
+              <div id="taskDetailPanel" class="task-detail muted">选择一条任务查看详情</div>
             </section>
 
             <section class="panel compact-panel" data-tool-group="project quality" data-tool-panel="narrative-radar">
