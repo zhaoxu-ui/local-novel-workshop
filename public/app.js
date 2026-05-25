@@ -10,19 +10,24 @@ const state = {
   tasks: [],
   searchResults: [],
   narrativeRadar: null,
+  memoryRecallResult: null,
+  memoryRecallCandidates: {},
+  storyBible: null,
   workflowResult: null,
   archiveAssistants: [],
   activeSyncReviewIndex: 0,
   activeSyncReview: null,
+  activeSyncPreview: null,
   snapshots: [],
-  activeToolGroup: "all",
-  activeToolPanel: "",
+  activeToolGroup: "write",
+  activeToolPanel: "chapter-board",
   autosaveTimer: null,
   lastAutosaveKey: "",
   layout: {
     leftCollapsed: false,
     rightCollapsed: false,
-    newProjectCollapsed: false
+    newProjectCollapsed: false,
+    moreToolsOpen: false
   }
 };
 
@@ -40,12 +45,13 @@ const el = {
   activeProjectName: document.querySelector("#activeProjectName"),
   projectMeta: document.querySelector("#projectMeta"),
   toolboxTabs: document.querySelector("#toolboxTabs"),
+  toggleMoreTools: document.querySelector("#toggleMoreTools"),
+  moreToolMenu: document.querySelector("#moreToolMenu"),
   toggleLeftPane: document.querySelector("#toggleLeftPane"),
   toggleRightPane: document.querySelector("#toggleRightPane"),
   toggleAiConfig: document.querySelector("#toggleAiConfig"),
   topAiConfig: document.querySelector("#topAiConfig"),
   codexConfig: document.querySelector("#codexConfig"),
-  runCodexDirect: document.querySelector("#runCodexDirect"),
   openProjectFolder: document.querySelector("#openProjectFolder"),
   copyProjectPath: document.querySelector("#copyProjectPath"),
   saveAiSettings: document.querySelector("#saveAiSettings"),
@@ -53,6 +59,14 @@ const el = {
   archiveAssistantHint: document.querySelector("#archiveAssistantHint"),
   saveArchiveAssistant: document.querySelector("#saveArchiveAssistant"),
   openArchiveAssistant: document.querySelector("#openArchiveAssistant"),
+  storyBibleSection: document.querySelector("#storyBibleSection"),
+  storyBibleId: document.querySelector("#storyBibleId"),
+  storyBibleName: document.querySelector("#storyBibleName"),
+  storyBibleStatus: document.querySelector("#storyBibleStatus"),
+  storyBibleSummary: document.querySelector("#storyBibleSummary"),
+  saveStoryBibleEntry: document.querySelector("#saveStoryBibleEntry"),
+  refreshStoryBible: document.querySelector("#refreshStoryBible"),
+  storyBiblePanel: document.querySelector("#storyBiblePanel"),
   exportTxt: document.querySelector("#exportTxt"),
   exportMd: document.querySelector("#exportMd"),
   chapterNo: document.querySelector("#chapterNo"),
@@ -67,11 +81,13 @@ const el = {
   knowledgeFiles: document.querySelector("#knowledgeFiles"),
   knowledgeNote: document.querySelector("#knowledgeNote"),
   absorbKnowledge: document.querySelector("#absorbKnowledge"),
-  generateDraft: document.querySelector("#generateDraft"),
+  styleSample: document.querySelector("#styleSample"),
+  styleNote: document.querySelector("#styleNote"),
+  analyzeStyleProfile: document.querySelector("#analyzeStyleProfile"),
+  styleProfilePanel: document.querySelector("#styleProfilePanel"),
+  previewMemoryRecall: document.querySelector("#previewMemoryRecall"),
+  memoryRecallPanel: document.querySelector("#memoryRecallPanel"),
   runPipeline: document.querySelector("#runPipeline"),
-  polishDraft: document.querySelector("#polishDraft"),
-  reviewDraft: document.querySelector("#reviewDraft"),
-  checkContinuity: document.querySelector("#checkContinuity"),
   pipelineRunner: document.querySelector("#pipelineRunner"),
   saveChapter: document.querySelector("#saveChapter"),
   saveChapterPlan: document.querySelector("#saveChapterPlan"),
@@ -84,7 +100,6 @@ const el = {
   taskCenterPanel: document.querySelector("#taskCenterPanel"),
   runNarrativeRadar: document.querySelector("#runNarrativeRadar"),
   narrativeRadarPanel: document.querySelector("#narrativeRadarPanel"),
-  createCodexTask: document.querySelector("#createCodexTask"),
   projectStats: document.querySelector("#projectStats"),
   chapterBoard: document.querySelector("#chapterBoard"),
   snapshotNote: document.querySelector("#snapshotNote"),
@@ -106,11 +121,11 @@ const el = {
   saveModelPreset: document.querySelector("#saveModelPreset"),
   cloneProject: document.querySelector("#cloneProject"),
   workflowPanel: document.querySelector("#workflowPanel"),
+  maintenancePanel: document.querySelector("#maintenancePanel"),
   refreshVersions: document.querySelector("#refreshVersions"),
   versionPanel: document.querySelector("#versionPanel"),
   doctorPanel: document.querySelector("#doctorPanel"),
   runDoctor: document.querySelector("#runDoctor"),
-  runHistory: document.querySelector("#runHistory"),
   pipelineFlow: document.querySelector("#pipelineFlow"),
   runDetailPanel: document.querySelector("#runDetailPanel"),
   syncReviewPanel: document.querySelector("#syncReviewPanel"),
@@ -159,18 +174,27 @@ function updateAiModeVisibility() {
   if (state.doctor) renderDoctor(state.doctor);
 }
 
+function normalizeToolboxGroup(group = "write") {
+  const available = new Set(["write", "project", "quality", "revision", "publish", "system"]);
+  return available.has(group) ? group : "write";
+}
+
 function loadLayoutState() {
   try {
     const saved = JSON.parse(localStorage.getItem("novelStudioLayout") || "{}");
     state.layout.leftCollapsed = Boolean(saved.leftCollapsed);
     state.layout.rightCollapsed = Boolean(saved.rightCollapsed);
     state.layout.newProjectCollapsed = Boolean(saved.newProjectCollapsed);
-    state.activeToolGroup = saved.activeToolGroup || "all";
-    state.activeToolPanel = saved.activeToolPanel || "";
+    state.layout.moreToolsOpen = Boolean(saved.moreToolsOpen);
+    state.activeToolGroup = normalizeToolboxGroup(saved.activeToolGroup || "write");
+    state.activeToolPanel = saved.activeToolPanel || "chapter-board";
   } catch {
     state.layout.leftCollapsed = false;
     state.layout.rightCollapsed = false;
     state.layout.newProjectCollapsed = false;
+    state.layout.moreToolsOpen = false;
+    state.activeToolGroup = "write";
+    state.activeToolPanel = "chapter-board";
   }
 }
 
@@ -179,6 +203,7 @@ function saveLayoutState() {
     leftCollapsed: state.layout.leftCollapsed,
     rightCollapsed: state.layout.rightCollapsed,
     newProjectCollapsed: state.layout.newProjectCollapsed,
+    moreToolsOpen: state.layout.moreToolsOpen,
     activeToolGroup: state.activeToolGroup,
     activeToolPanel: state.activeToolPanel
   }));
@@ -208,6 +233,14 @@ function renderLayoutState() {
     const stateText = el.toggleNewProject.querySelector("em");
     if (stateText) stateText.textContent = state.layout.newProjectCollapsed ? "展开" : "收起";
   }
+  if (el.moreToolMenu) {
+    el.moreToolMenu.hidden = !state.layout.moreToolsOpen;
+  }
+  if (el.toggleMoreTools) {
+    const isSecondaryGroup = state.activeToolGroup !== "write";
+    el.toggleMoreTools.setAttribute("aria-expanded", String(state.layout.moreToolsOpen));
+    el.toggleMoreTools.classList.toggle("active", isSecondaryGroup || state.layout.moreToolsOpen);
+  }
 }
 
 function togglePane(side, force) {
@@ -231,6 +264,12 @@ function toggleAiConfig(force) {
   el.toggleAiConfig.classList.toggle("active", shouldOpen);
 }
 
+function toggleMoreTools(force) {
+  state.layout.moreToolsOpen = typeof force === "boolean" ? force : !state.layout.moreToolsOpen;
+  renderLayoutState();
+  saveLayoutState();
+}
+
 function initializeToolPanels() {
   for (const panel of document.querySelectorAll("[data-tool-panel]")) {
     const heading = panel.querySelector("h2");
@@ -247,9 +286,10 @@ function initializeToolPanels() {
 }
 
 function visibleToolPanels(group = state.activeToolGroup) {
+  const normalizedGroup = normalizeToolboxGroup(group);
   return [...document.querySelectorAll("[data-tool-panel]")].filter((panel) => {
     const groups = String(panel.dataset.toolGroup || "").split(/\s+/).filter(Boolean);
-    return group === "all" || groups.includes(group);
+    return groups.includes(normalizedGroup);
   });
 }
 
@@ -274,22 +314,24 @@ function setActiveToolPanel(panelId) {
   saveLayoutState();
 }
 
-function setToolboxGroup(group = "all") {
-  state.activeToolGroup = group;
+function setToolboxGroup(group = "write") {
+  state.activeToolGroup = normalizeToolboxGroup(group);
   for (const button of el.toolboxTabs?.querySelectorAll("[data-toolbox-group]") || []) {
-    button.classList.toggle("active", button.dataset.toolboxGroup === group);
+    button.classList.toggle("active", button.dataset.toolboxGroup === state.activeToolGroup);
   }
   for (const panel of document.querySelectorAll("[data-tool-group]")) {
     const groups = String(panel.dataset.toolGroup || "").split(/\s+/).filter(Boolean);
-    const visible = group === "all" || groups.includes(group);
+    const visible = groups.includes(state.activeToolGroup);
     panel.hidden = !visible;
     panel.classList.toggle("is-hidden", !visible);
   }
-  const activePanelVisible = visibleToolPanels(group).some((panel) => panel.dataset.toolPanel === state.activeToolPanel);
+  const activePanelVisible = visibleToolPanels(state.activeToolGroup).some((panel) => panel.dataset.toolPanel === state.activeToolPanel);
   if (!activePanelVisible) {
-    state.activeToolPanel = visibleToolPanels(group)[0]?.dataset.toolPanel || "";
+    state.activeToolPanel = visibleToolPanels(state.activeToolGroup)[0]?.dataset.toolPanel || "";
   }
+  if (state.activeToolGroup !== "write") state.layout.moreToolsOpen = false;
   setActiveToolPanel(state.activeToolPanel);
+  renderLayoutState();
   saveLayoutState();
 }
 
@@ -519,16 +561,33 @@ function taskStatusLabel(status) {
   }[status] || status || "未知";
 }
 
+function taskKindLabel(kind) {
+  return {
+    codex: "Codex 运行",
+    "sync-review": "状态同步",
+    revision: "修订任务",
+    pipeline: "多阶段流水线",
+    idea: "创意孵化",
+    knowledge: "资料投喂",
+    style: "文风模仿",
+    quality: "质检任务",
+    publish: "发布资料",
+    conflict: "记忆冲突",
+    maintenance: "项目维护",
+    export: "导出任务"
+  }[kind] || kind || "任务";
+}
+
 function renderTaskCenter() {
   if (!el.taskCenterPanel) return;
   if (!state.activeProject) {
-    el.taskCenterPanel.textContent = "选择项目后显示 Codex、流水线、修订和质检任务";
+    el.taskCenterPanel.textContent = "选择项目后显示 Codex 运行历史、流水线、修订和质检任务";
     el.taskCenterPanel.classList.add("muted");
     return;
   }
   const tasks = state.tasks || [];
   if (!tasks.length) {
-    el.taskCenterPanel.textContent = "暂无任务记录。运行流水线、修订或质检后会显示在这里。";
+    el.taskCenterPanel.textContent = "暂无任务记录。运行流水线、修订、质检或 Codex 直连后会显示在这里。";
     el.taskCenterPanel.classList.add("muted");
     return;
   }
@@ -538,9 +597,10 @@ function renderTaskCenter() {
     const row = document.createElement("div");
     row.className = `task-row ${task.status || "unknown"}`;
     const file = (task.files || []).find((item) => state.files.includes(item));
+    const time = task.finishedAt || task.startedAt || "";
     row.innerHTML = `
       <div>
-        <span>${escapeHtml(task.kind || "task")} · ${escapeHtml(taskStatusLabel(task.status))}</span>
+        <span>${escapeHtml(taskKindLabel(task.kind))} · ${escapeHtml(taskStatusLabel(task.status))}${time ? ` · ${escapeHtml(time)}` : ""}</span>
         <strong>${escapeHtml(task.title || "任务")}</strong>
         <em>${escapeHtml(task.detail || task.runtimeDir || "")}</em>
       </div>
@@ -697,6 +757,103 @@ function renderArchiveAssistantHint() {
     : `${state.activeProject.archiveAssistantName || "未设置"}：可选择自动推荐或手动指定助手。`;
 }
 
+function currentStoryBibleSection() {
+  return el.storyBibleSection?.value || "characters";
+}
+
+function renderStoryBible() {
+  if (!el.storyBiblePanel) return;
+  if (!state.activeProject) {
+    el.storyBiblePanel.textContent = "选择项目后显示长期记忆条目";
+    el.storyBiblePanel.classList.add("muted");
+    return;
+  }
+  const sectionKey = currentStoryBibleSection();
+  const section = state.storyBible?.sections?.[sectionKey];
+  if (!section) {
+    el.storyBiblePanel.textContent = "点击“刷新故事圣经”读取长期记忆。";
+    el.storyBiblePanel.classList.add("muted");
+    return;
+  }
+  const items = section.items || [];
+  if (!items.length) {
+    el.storyBiblePanel.textContent = `暂无${section.label || "条目"}，可用上方表单新增。`;
+    el.storyBiblePanel.classList.add("muted");
+    return;
+  }
+  el.storyBiblePanel.classList.remove("muted");
+  el.storyBiblePanel.innerHTML = "";
+  for (const item of items.slice(0, 12)) {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "story-bible-row";
+    row.innerHTML = `
+      <strong>${escapeHtml(item.name || item.id)}</strong>
+      <span>${escapeHtml(item.status || "未标注状态")}</span>
+      <em>${escapeHtml(item.summary || item.note || "")}</em>
+    `;
+    row.addEventListener("click", () => {
+      if (el.storyBibleId) el.storyBibleId.value = item.id || "";
+      if (el.storyBibleName) el.storyBibleName.value = item.name || "";
+      if (el.storyBibleStatus) el.storyBibleStatus.value = item.status || "";
+      if (el.storyBibleSummary) el.storyBibleSummary.value = item.summary || item.note || "";
+    });
+    el.storyBiblePanel.appendChild(row);
+  }
+}
+
+async function loadStoryBible(showStatus = false) {
+  if (!state.activeProject) return;
+  if (showStatus) setStatus("正在读取故事圣经...");
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/story-bible`);
+    state.storyBible = data;
+    renderStoryBible();
+    if (showStatus) setStatus("故事圣经已刷新。");
+  } catch (error) {
+    if (el.storyBiblePanel) {
+      el.storyBiblePanel.textContent = error.message;
+      el.storyBiblePanel.classList.add("muted");
+    }
+    if (showStatus) setStatus(error.message, "error");
+  }
+}
+
+async function saveStoryBibleEntry() {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  const item = {
+    id: el.storyBibleId?.value.trim() || "",
+    name: el.storyBibleName?.value.trim() || "",
+    status: el.storyBibleStatus?.value.trim() || "",
+    summary: el.storyBibleSummary?.value.trim() || ""
+  };
+  if (!item.name && !item.id) return setStatus("请至少填写 ID 或名称。", "error");
+  setBusy(true);
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/story-bible`, {
+      method: "POST",
+      body: JSON.stringify({
+        section: currentStoryBibleSection(),
+        item
+      })
+    });
+    state.storyBible = { sections: data.sections || {} };
+    if (data.project) {
+      state.activeProject = data.project;
+      state.files = data.project.files || [];
+      renderFiles();
+      renderProjectMeta();
+    }
+    renderStoryBible();
+    await refreshTaskCenter();
+    setStatus("故事圣经条目已保存。");
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
 async function loadCodexConfig() {
   try {
     const data = await api("/api/codex/config");
@@ -727,6 +884,7 @@ async function loadProject(id) {
   state.tasks = [];
   state.searchResults = [];
   state.narrativeRadar = null;
+  state.storyBible = null;
   state.lastAutosaveKey = "";
   state.snapshots = data.project.snapshots || [];
   el.activeProjectName.textContent = data.project.name;
@@ -749,11 +907,14 @@ async function loadProject(id) {
   renderQualityReport();
   renderWorkflowResult();
   renderVersions();
-  renderRunHistory();
   renderGlobalSearchResults();
   renderTaskCenter();
   renderNarrativeRadar();
+  renderStoryBible();
+  renderStyleProfileResult();
+  renderMemoryRecallResult();
   renderSyncReviews();
+  loadStoryBible(false);
   refreshTaskCenter();
   runDoctor(false);
   setAutosaveStatus("自动保存待机");
@@ -863,81 +1024,6 @@ async function saveChapter() {
     state.lastAutosaveKey = autosaveKey();
     setAutosaveStatus("手动保存完成", "ok");
     setStatus(`已保存：${data.file}`);
-  } catch (error) {
-    setStatus(error.message, "error");
-  } finally {
-    setBusy(false);
-  }
-}
-
-async function runTask(task) {
-  if (el.pipelineRunner?.value === "codex") {
-    return runTaskWithCodex(task);
-  }
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
-  const taskName = {
-    draft: "生成章节",
-    polish: "降 AI 感润色",
-    review: "发布前审稿",
-    continuity: "连续性检查"
-  }[task];
-  setBusy(true);
-  setStatus(`${taskName}中。本地模型第一次响应可能会慢一点。`);
-  try {
-    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/generate`, {
-      method: "POST",
-      body: JSON.stringify({
-        task,
-        chapterNo: el.chapterNo.value,
-        title: el.chapterTitle.value.trim(),
-        brief: el.chapterBrief.value.trim(),
-        draft: el.draft.value,
-        activeFile: state.activeFile,
-        contextFiles: selectedContextFiles(),
-        model: el.modelName.value.trim(),
-        endpoint: el.endpoint.value.trim()
-      })
-    });
-    el.draft.value = data.output.trim();
-    setStatus(`${taskName}完成。满意后记得保存为章节。`);
-  } catch (error) {
-    setStatus(error.message, "error");
-  } finally {
-    setBusy(false);
-  }
-}
-
-async function runTaskWithCodex(task) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
-  const taskName = {
-    draft: "生成可发布章节",
-    polish: "降 AI 感润色",
-    review: "发布前审稿",
-    continuity: "连续性检查"
-  }[task];
-  const taskText = {
-    draft: "请根据项目资料、本章 brief 和连续性档案，生成一章可直接发布的中文小说正文，并创建或更新 01_正文 下的章节文件。",
-    polish: "请对当前正文做降 AI 感润色，优先处理过度解释、总结式心理、人物过度正确和对话太完整的问题。",
-    review: "请做发布前审稿，指出影响发布的硬伤，并把审稿报告写入 07_Codex 或 04_连续性 的合适文件。",
-    continuity: "请检查连续性、人物状态、伏笔、情绪债和因果漏洞，并把检查结果写入 04_连续性 的合适文件。"
-  }[task];
-
-  setBusy(true);
-  try {
-    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/codex-run`, {
-      method: "POST",
-      body: JSON.stringify({
-        task: taskText,
-        chapterNo: el.chapterNo.value,
-        title: el.chapterTitle.value.trim(),
-        brief: el.chapterBrief.value.trim(),
-        draft: el.draft.value,
-        activeFile: state.activeFile
-      })
-    });
-    setStatus(`Codex 已启动：${taskName}。PID：${data.run.pid}。日志：${data.run.logFile}`);
-    refreshTaskCenter();
-    pollCodexRun(data.run.runId, data.run.finalFile);
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -1096,29 +1182,29 @@ async function absorbKnowledge() {
   }
 }
 
-async function createCodexTask() {
+async function analyzeStyleProfile() {
   if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  const sample = el.styleSample?.value.trim() || "";
+  if (!sample) return setStatus("请先粘贴作者样本或本项目样稿。", "error");
   setBusy(true);
   try {
-    const task = [
-      el.ideaInput.value.trim() ? `原始思路：${el.ideaInput.value.trim()}` : "",
-      el.chapterBrief.value.trim() ? `本章任务：${el.chapterBrief.value.trim()}` : "",
-      el.draft.value.trim() ? "请结合当前正文/审稿结果继续处理。" : ""
-    ].filter(Boolean).join("\n\n") || "请根据项目资料继续推进小说创作。";
-
-    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/codex`, {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/style-profile`, {
       method: "POST",
       body: JSON.stringify({
-        task,
-        chapterNo: el.chapterNo.value,
-        title: el.chapterTitle.value.trim(),
-        brief: el.chapterBrief.value.trim(),
-        activeFile: state.activeFile
+        sample,
+        note: el.styleNote?.value.trim() || ""
       })
     });
-    await loadProject(state.activeProject.id);
-    el.draft.value = data.content;
-    setStatus(`Codex 任务单已生成：${data.file}。在 Codex 里让它读取这个文件即可接手。`);
+    if (data.project) {
+      state.activeProject = data.project;
+      state.files = data.project.files || [];
+      state.chapters = data.project.chapters || [];
+    }
+    renderFiles();
+    renderProjectStats();
+    renderStyleProfileResult(data);
+    await refreshTaskCenter();
+    setStatus(`文风模仿档案已生成：${data.profileFile}`);
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -1126,33 +1212,27 @@ async function createCodexTask() {
   }
 }
 
-async function runCodexDirect() {
+async function previewMemoryRecall() {
   if (!state.activeProject) return setStatus("请先选择项目。", "error");
-  setBusy(true);
   try {
-    const task = [
-      el.ideaInput.value.trim() ? `原始思路：${el.ideaInput.value.trim()}` : "",
-      el.chapterBrief.value.trim() ? `本章任务：${el.chapterBrief.value.trim()}` : "",
-      el.draft.value.trim() ? "当前正文/审稿结果已在界面中，请优先以项目文件为准，必要时参考任务单。" : ""
-    ].filter(Boolean).join("\n\n") || "请根据项目资料继续推进小说创作。";
-
-    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/codex-run`, {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/memory-recall`, {
       method: "POST",
       body: JSON.stringify({
-        task,
         chapterNo: el.chapterNo.value,
         title: el.chapterTitle.value.trim(),
         brief: el.chapterBrief.value.trim(),
+        draft: el.draft.value,
         activeFile: state.activeFile
       })
     });
-    setStatus(`Codex 已启动，进程 PID：${data.run.pid}。日志：${data.run.logFile}`);
-    refreshTaskCenter();
-    pollCodexRun(data.run.runId, data.run.finalFile);
+    state.memoryRecallResult = data;
+    renderMemoryRecallResult(data);
+    const ranked = data.recalledMemory?.ranked || {};
+    const total = ["characters", "foreshadows", "plotThreads", "readerPromises", "similarChapters", "emotionBeats"]
+      .reduce((sum, key) => sum + (ranked[key]?.length || 0), 0);
+    setStatus(`本章召回预览完成：${total} 条结构化记忆。`);
   } catch (error) {
     setStatus(error.message, "error");
-  } finally {
-    setBusy(false);
   }
 }
 
@@ -1521,7 +1601,6 @@ async function restoreSnapshot(snapshotId) {
     renderSnapshots();
     state.qualityReport = null;
     renderQualityReport();
-    renderRunHistory();
     renderSyncReviews();
     setStatus(`已恢复快照：${snapshotId}。恢复前状态已保存为：${data.safetySnapshot?.id || "自动快照"}`);
   } catch (error) {
@@ -1689,7 +1768,6 @@ async function runAiQualityCheck() {
     renderProjectStats();
     renderChapterBoard();
     renderQualityReport();
-    renderRunHistory();
     if (data.mode === "codex") {
       setStatus(`Codex AI 深度复核已启动。目标报告：${data.reportFile}`);
     } else {
@@ -1702,21 +1780,20 @@ async function runAiQualityCheck() {
   }
 }
 
-function renderWorkflowResult() {
-  if (!el.workflowPanel) return;
-  const result = state.workflowResult;
+function renderResultPanel(panel, result, selectText, idleText) {
+  if (!panel) return;
   if (!state.activeProject) {
-    el.workflowPanel.textContent = "选择项目后显示生产闭环结果";
-    el.workflowPanel.classList.add("muted");
+    panel.textContent = selectText;
+    panel.classList.add("muted");
     return;
   }
   if (!result) {
-    el.workflowPanel.textContent = "尚未执行生产闭环任务";
-    el.workflowPanel.classList.add("muted");
+    panel.textContent = idleText;
+    panel.classList.add("muted");
     return;
   }
-  el.workflowPanel.classList.remove("muted");
-  el.workflowPanel.innerHTML = "";
+  panel.classList.remove("muted");
+  panel.innerHTML = "";
   const card = document.createElement("div");
   card.className = "workflow-card";
   const files = [result.taskFile, result.revisionFile, result.file, result.reportFile, result.localReportFile].filter(Boolean);
@@ -1735,7 +1812,379 @@ function renderWorkflowResult() {
     button.addEventListener("click", () => openFileByPath(file));
     actions.appendChild(button);
   }
-  el.workflowPanel.appendChild(card);
+  renderConflictRepairControls(card, result);
+  panel.appendChild(card);
+}
+
+function firstRepairableConflict(result) {
+  return (result?.conflicts || []).find((item) => item?.type === "人物状态重复" && item?.key)
+    || (result?.conflict?.type === "人物状态重复" && result?.conflict?.key ? result.conflict : null);
+}
+
+function renderConflictRepairControls(card, result) {
+  const conflict = firstRepairableConflict(result);
+  const conflicts = result?.conflicts || [];
+  const plan = result?.plan || result?.repairPlan;
+  if (!conflict && !conflicts.length && !plan) return;
+
+  const section = document.createElement("div");
+  section.className = "conflict-repair";
+
+  const summary = document.createElement("p");
+  summary.textContent = conflicts.length
+    ? `发现 ${conflicts.length} 个记忆冲突，当前可自动修复：${conflict ? `${conflict.type} / ${conflict.key}` : "暂无"}`
+    : `修复对象：${conflict?.type || "记忆冲突"} / ${conflict?.key || "未指定"}`;
+  section.appendChild(summary);
+
+  if (plan?.actions?.length) {
+    const list = document.createElement("div");
+    list.className = "conflict-repair-plan";
+    list.textContent = `${plan.title || "修复方案"}：${plan.actions.map((item) => item.summary || item.action).join("；")}`;
+    section.appendChild(list);
+  } else if (conflicts.length) {
+    const list = document.createElement("div");
+    list.className = "conflict-repair-plan";
+    list.textContent = conflicts.slice(0, 3).map((item) => `${item.type}：${item.key}`).join("；");
+    section.appendChild(list);
+  }
+
+  if (conflict) {
+    const actions = document.createElement("div");
+    actions.className = "workflow-actions";
+
+    const planButton = document.createElement("button");
+    planButton.type = "button";
+    planButton.textContent = "生成修复方案";
+    planButton.setAttribute("data-conflict-repair-plan", "true");
+    planButton.addEventListener("click", () => createConflictRepairPlan(conflict));
+
+    const applyButton = document.createElement("button");
+    applyButton.type = "button";
+    applyButton.textContent = plan ? "应用修复" : "直接修复";
+    applyButton.setAttribute("data-conflict-repair-apply", "true");
+    applyButton.addEventListener("click", () => applyConflictRepair(conflict));
+
+    actions.append(planButton, applyButton);
+    section.appendChild(actions);
+  }
+
+  card.appendChild(section);
+}
+
+function renderWorkflowResult() {
+  const result = state.workflowResult;
+  const target = result?.target || "revision";
+  renderResultPanel(
+    el.workflowPanel,
+    target === "revision" ? result : null,
+    "选择项目后显示修订发布结果",
+    "尚未执行修订发布任务"
+  );
+  renderResultPanel(
+    el.maintenancePanel,
+    target === "maintenance" ? result : null,
+    "选择项目后显示维护结果",
+    "尚未执行项目维护任务"
+  );
+}
+
+function renderStyleProfileResult(result = null) {
+  if (!el.styleProfilePanel) return;
+  if (!state.activeProject) {
+    el.styleProfilePanel.textContent = "选择项目后可生成文风模仿档案";
+    el.styleProfilePanel.classList.add("muted");
+    return;
+  }
+  if (!result) {
+    el.styleProfilePanel.textContent = "粘贴自己的样稿后生成风格画像，流水线会自动召回。";
+    el.styleProfilePanel.classList.add("muted");
+    return;
+  }
+  const profile = result.profile || {};
+  el.styleProfilePanel.classList.remove("muted");
+  el.styleProfilePanel.innerHTML = `
+    <div class="workflow-card">
+      <strong>${escapeHtml(profile.rhythm || "文风档案已生成")}</strong>
+      <p>${escapeHtml(profile.sentenceShape || "")} ${escapeHtml(profile.dialogue || "")}</p>
+      <div class="workflow-actions">
+        <button type="button" data-style-file="${escapeAttr(result.profileFile || "")}">打开档案</button>
+        <button type="button" data-style-file="${escapeAttr(result.memoryFile || "")}">风格记忆</button>
+      </div>
+    </div>
+  `;
+  for (const button of el.styleProfilePanel.querySelectorAll("[data-style-file]")) {
+    const file = button.dataset.styleFile;
+    button.disabled = !file || !state.files.includes(file);
+    button.addEventListener("click", () => file && openFileByPath(file));
+  }
+}
+
+function memoryRecallItemLabel(type) {
+  return {
+    characters: "人物",
+    foreshadows: "伏笔",
+    plotThreads: "剧情线",
+    readerPromises: "承诺",
+    similarChapters: "章节",
+    emotionBeats: "情绪"
+  }[type] || "记忆";
+}
+
+function memoryRecallPinKey(type, item = {}, index = 0) {
+  return `${type}:${item.id || item.name || index}`;
+}
+
+function memoryRecallPinPayload(type, item = {}, index = 0) {
+  const text = item.text || item.name || item.id || "";
+  return {
+    type,
+    id: String(item.id || item.name || `${type}-${index}`),
+    label: item.name || item.id || memoryRecallItemLabel(type),
+    text,
+    source: (item.hits || []).join(" / ")
+  };
+}
+
+async function pinMemoryRecallItem(key) {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  const item = state.memoryRecallCandidates[key];
+  if (!item) return setStatus("没有找到可钉选的召回条目。", "error");
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/memory-pins`, {
+      method: "POST",
+      body: JSON.stringify({
+        chapterNo: el.chapterNo.value,
+        title: el.chapterTitle.value.trim(),
+        item
+      })
+    });
+    const current = state.memoryRecallResult || { title: el.chapterTitle.value.trim(), recalledMemory: {} };
+    state.memoryRecallResult = {
+      ...current,
+      recalledMemory: {
+        ...(current.recalledMemory || {}),
+        pinned: data.pins || []
+      }
+    };
+    renderMemoryRecallResult(state.memoryRecallResult);
+    setStatus(`已钉选为本章必读：${item.label || item.id}`);
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function unpinMemoryRecallItem(key) {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  const item = state.memoryRecallCandidates[key];
+  if (!item) return setStatus("没有找到可取消的钉选条目。", "error");
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/memory-pins`, {
+      method: "DELETE",
+      body: JSON.stringify({
+        chapterNo: el.chapterNo.value,
+        title: el.chapterTitle.value.trim(),
+        ...item
+      })
+    });
+    const current = state.memoryRecallResult || { title: el.chapterTitle.value.trim(), recalledMemory: {} };
+    state.memoryRecallResult = {
+      ...current,
+      recalledMemory: {
+        ...(current.recalledMemory || {}),
+        pinned: data.pins || []
+      }
+    };
+    renderMemoryRecallResult(state.memoryRecallResult);
+    setStatus(`已取消本章必读：${item.label || item.id}`);
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function excludeMemoryRecallItem(key) {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  const item = state.memoryRecallCandidates[key];
+  if (!item) return setStatus("没有找到可排除的召回条目。", "error");
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/memory-exclusions`, {
+      method: "POST",
+      body: JSON.stringify({
+        chapterNo: el.chapterNo.value,
+        title: el.chapterTitle.value.trim(),
+        item
+      })
+    });
+    const current = state.memoryRecallResult || { title: el.chapterTitle.value.trim(), recalledMemory: {} };
+    state.memoryRecallResult = {
+      ...current,
+      recalledMemory: {
+        ...(current.recalledMemory || {}),
+        excluded: data.exclusions || []
+      }
+    };
+    renderMemoryRecallResult(state.memoryRecallResult);
+    setStatus(`已设为本章不读：${item.label || item.id}`);
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+async function unexcludeMemoryRecallItem(key) {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  const item = state.memoryRecallCandidates[key];
+  if (!item) return setStatus("没有找到可取消排除的条目。", "error");
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/memory-exclusions`, {
+      method: "DELETE",
+      body: JSON.stringify({
+        chapterNo: el.chapterNo.value,
+        title: el.chapterTitle.value.trim(),
+        ...item
+      })
+    });
+    const current = state.memoryRecallResult || { title: el.chapterTitle.value.trim(), recalledMemory: {} };
+    state.memoryRecallResult = {
+      ...current,
+      recalledMemory: {
+        ...(current.recalledMemory || {}),
+        excluded: data.exclusions || []
+      }
+    };
+    renderMemoryRecallResult(state.memoryRecallResult);
+    setStatus(`已恢复本章召回：${item.label || item.id}`);
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+function renderMemoryRecallPinned(items = []) {
+  const rows = (items || []).slice(0, 12);
+  return `
+    <div class="recall-group recall-pinned">
+      <strong>本章必读</strong>
+      ${rows.length ? rows.map((item, index) => {
+        const key = memoryRecallPinKey(item.type || "pinned", item, index);
+        state.memoryRecallCandidates[key] = item;
+        return `
+          <div class="recall-item">
+            <span>${escapeHtml(memoryRecallItemLabel(item.type))} · ${escapeHtml(item.label || item.id || "")}</span>
+            <p>${escapeHtml(item.text || "")}</p>
+            <div class="recall-actions">
+              <button type="button" data-memory-unpin="${escapeAttr(key)}">取消钉选</button>
+            </div>
+          </div>
+        `;
+      }).join("") : `<em>暂无钉选。可在下方召回结果里把关键条目设为本章必读。</em>`}
+    </div>
+  `;
+}
+
+function renderMemoryRecallExcluded(items = []) {
+  const rows = (items || []).slice(0, 12);
+  return `
+    <div class="recall-group recall-excluded">
+      <strong>本章不读</strong>
+      ${rows.length ? rows.map((item, index) => {
+        const key = memoryRecallPinKey(item.type || "excluded", item, index);
+        state.memoryRecallCandidates[key] = item;
+        return `
+          <div class="recall-item">
+            <span>${escapeHtml(memoryRecallItemLabel(item.type))} · ${escapeHtml(item.label || item.id || "")}</span>
+            <p>${escapeHtml(item.text || "")}</p>
+            <div class="recall-actions">
+              <button type="button" data-memory-unexclude="${escapeAttr(key)}">取消排除</button>
+            </div>
+          </div>
+        `;
+      }).join("") : `<em>暂无排除。可在下方召回结果里把不适合本章的条目标为本章不读。</em>`}
+    </div>
+  `;
+}
+
+function memoryRecallMatchesControl(type, item = {}, control = {}) {
+  if (control.type !== type) return false;
+  const candidates = [item.id, item.name, item.label, item.thread, item.promise, item.question].filter(Boolean).map(String);
+  if (control.id && candidates.includes(String(control.id))) return true;
+  if (control.label && candidates.includes(String(control.label))) return true;
+  const itemText = String(item.text || item.name || item.id || "");
+  const controlText = String(control.text || "").slice(0, 120);
+  return Boolean(controlText && itemText.includes(controlText));
+}
+
+function filterMemoryRecallItems(type, items = [], excluded = []) {
+  return (items || []).filter((item) => !excluded.some((control) => memoryRecallMatchesControl(type, item, control)));
+}
+
+function renderMemoryRecallGroup(title, type, items = [], emptyText = "暂无命中") {
+  const rows = (items || []).slice(0, 4);
+  return `
+    <div class="recall-group">
+      <strong>${escapeHtml(title)}</strong>
+      ${rows.length ? rows.map((item, index) => {
+        const key = memoryRecallPinKey(type, item, index);
+        state.memoryRecallCandidates[key] = memoryRecallPinPayload(type, item, index);
+        return `
+        <div class="recall-item">
+          <span>${escapeHtml((item.hits || []).join(" / ") || `score ${item.score || 0}`)}</span>
+          <p>${escapeHtml(item.name || item.text || item.id || "")}</p>
+          <div class="recall-actions">
+            <button type="button" data-memory-pin="${escapeAttr(key)}">钉选本章</button>
+            <button type="button" data-memory-exclude="${escapeAttr(key)}">排除本章</button>
+          </div>
+        </div>
+      `;
+      }).join("") : `<em>${escapeHtml(emptyText)}</em>`}
+    </div>
+  `;
+}
+
+function renderMemoryRecallResult(data = null) {
+  if (!el.memoryRecallPanel) return;
+  if (!state.activeProject) {
+    el.memoryRecallPanel.textContent = "选择项目后可预览本章召回";
+    el.memoryRecallPanel.classList.add("muted");
+    return;
+  }
+  if (!data) {
+    el.memoryRecallPanel.textContent = "点击“预览本章召回”，查看 AI 写作前会读取的关键记忆。";
+    el.memoryRecallPanel.classList.add("muted");
+    return;
+  }
+  const recall = data.recalledMemory || {};
+  const excluded = recall.excluded || [];
+  const ranked = Object.fromEntries(Object.entries(recall.ranked || {}).map(([type, items]) => [type, filterMemoryRecallItems(type, items, excluded)]));
+  state.memoryRecallCandidates = {};
+  el.memoryRecallPanel.classList.remove("muted");
+  el.memoryRecallPanel.innerHTML = `
+    <div class="recall-summary">
+      <strong>${escapeHtml(data.title || "本章召回")}</strong>
+      <span>关键词：${escapeHtml((recall.keywords || []).slice(0, 10).join(" / ") || "无")}</span>
+    </div>
+    ${renderMemoryRecallPinned(recall.pinned)}
+    ${renderMemoryRecallExcluded(excluded)}
+    ${renderMemoryRecallGroup("人物状态", "characters", ranked.characters)}
+    ${renderMemoryRecallGroup("伏笔", "foreshadows", ranked.foreshadows)}
+    ${renderMemoryRecallGroup("剧情线程", "plotThreads", ranked.plotThreads)}
+    ${renderMemoryRecallGroup("读者承诺", "readerPromises", ranked.readerPromises)}
+    ${renderMemoryRecallGroup("相似章节", "similarChapters", ranked.similarChapters)}
+    ${renderMemoryRecallGroup("情绪记录", "emotionBeats", ranked.emotionBeats)}
+    <div class="recall-group">
+      <strong>文风档案</strong>
+      <p>${escapeHtml(recall.styleImitation?.profile?.rhythm || recall.styleImitation?.profileFile || "暂无文风档案")}</p>
+    </div>
+  `;
+  for (const button of el.memoryRecallPanel.querySelectorAll("[data-memory-pin]")) {
+    button.addEventListener("click", () => pinMemoryRecallItem(button.dataset.memoryPin));
+  }
+  for (const button of el.memoryRecallPanel.querySelectorAll("[data-memory-exclude]")) {
+    button.addEventListener("click", () => excludeMemoryRecallItem(button.dataset.memoryExclude));
+  }
+  for (const button of el.memoryRecallPanel.querySelectorAll("[data-memory-unpin]")) {
+    button.addEventListener("click", () => unpinMemoryRecallItem(button.dataset.memoryUnpin));
+  }
+  for (const button of el.memoryRecallPanel.querySelectorAll("[data-memory-unexclude]")) {
+    button.addEventListener("click", () => unexcludeMemoryRecallItem(button.dataset.memoryUnexclude));
+  }
 }
 
 function renderVersions() {
@@ -1807,7 +2256,7 @@ async function compareLatestVersion() {
   await diffVersion(latest.file);
 }
 
-async function workflowPost(path, body, successMessage) {
+async function workflowPost(path, body, successMessage, target = "revision") {
   if (!state.activeProject) return setStatus("请先选择项目。", "error");
   setBusy(true);
   try {
@@ -1821,7 +2270,7 @@ async function workflowPost(path, body, successMessage) {
       state.chapters = data.project.chapters || [];
       state.snapshots = data.project.snapshots || [];
     }
-    state.workflowResult = { ...data, title: successMessage, message: data.file || data.taskFile || data.reportFile || data.revisionFile || "" };
+    state.workflowResult = { ...data, target, title: successMessage, message: data.file || data.taskFile || data.reportFile || data.revisionFile || "" };
     renderProjects();
     renderFiles();
     renderProjectMeta();
@@ -1873,6 +2322,72 @@ async function analyzeConflicts() {
   await workflowPost("conflicts", {}, "记忆冲突报告已生成。");
 }
 
+async function createConflictRepairPlan(conflict) {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!conflict) return setStatus("没有可生成方案的记忆冲突。", "error");
+  setBusy(true);
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/conflicts/repair-plan`, {
+      method: "POST",
+      body: JSON.stringify({ conflict })
+    });
+    state.workflowResult = {
+      ...state.workflowResult,
+      ...data,
+      target: "revision",
+      title: "记忆冲突修复方案已生成",
+      message: data.plan?.title || "可在当前卡片中应用修复。"
+    };
+    renderWorkflowResult();
+    setStatus("记忆冲突修复方案已生成。");
+    return data;
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function applyConflictRepair(conflict) {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!conflict) return setStatus("没有可应用的记忆冲突修复。", "error");
+  setBusy(true);
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/conflicts/apply`, {
+      method: "POST",
+      body: JSON.stringify({ conflict })
+    });
+    if (data.project) {
+      state.activeProject = data.project;
+      state.files = data.project.files || [];
+      state.chapters = data.project.chapters || [];
+      state.snapshots = data.project.snapshots || [];
+    }
+    state.workflowResult = {
+      ...data,
+      target: "revision",
+      title: "记忆冲突已修复",
+      message: `已创建安全快照，并生成修复报告：${data.reportFile || ""}`
+    };
+    renderProjects();
+    renderFiles();
+    renderProjectMeta();
+    renderProjectStats();
+    renderChapterBoard();
+    renderSnapshots();
+    renderWorkflowResult();
+    await refreshVersions();
+    await refreshTaskCenter();
+    await loadStoryBible();
+    setStatus("记忆冲突修复已应用，修复前状态已保存为安全快照。");
+    return data;
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
 async function generatePublishMaterials() {
   await workflowPost("publish-materials", {
     platform: el.publishPlatform?.value.trim() || "通用",
@@ -1888,13 +2403,13 @@ async function saveCurrentModelPreset() {
     model: el.modelName.value.trim(),
     endpoint: el.endpoint.value.trim(),
     task: "当前配置"
-  }, "模型预设已保存。");
+  }, "模型预设已保存。", "maintenance");
 }
 
 async function cloneCurrentProject() {
   if (!state.activeProject) return setStatus("请先选择项目。", "error");
   const name = `${state.activeProject.name}_副本_${new Date().toISOString().slice(0, 10)}`;
-  const data = await workflowPost("clone", { name }, "项目已克隆。");
+  const data = await workflowPost("clone", { name }, "项目已克隆。", "maintenance");
   if (data?.project?.id) {
     await loadProjects();
   }
@@ -1904,7 +2419,7 @@ async function diffVersion(versionFile) {
   if (!state.activeFile) return setStatus("请先打开一个正文文件。", "error");
   const data = await workflowPost("versions/diff", { file: state.activeFile, versionFile }, "版本对照已生成。");
   const lines = (data?.diff || []).slice(0, 8).map((row) => `#${row.index} ${row.status}\n- 当前：${row.before?.slice(0, 80) || ""}\n- 版本：${row.after?.slice(0, 80) || ""}`).join("\n\n");
-  state.workflowResult = { title: "版本对照", message: lines || "没有差异" };
+  state.workflowResult = { target: "revision", title: "版本对照", message: lines || "没有差异" };
   renderWorkflowResult();
 }
 
@@ -1912,34 +2427,6 @@ async function restoreVersion(versionFile) {
   if (!state.activeFile) return setStatus("请先打开一个正文文件。", "error");
   if (!confirm("恢复历史版本会覆盖当前正文，系统会先创建快照和当前版本备份。继续吗？")) return;
   await workflowPost("versions/restore", { versionFile, targetFile: state.activeFile }, "章节历史版本已恢复。");
-}
-
-function renderRunHistory() {
-  const runs = state.activeProject?.runs || [];
-  if (!runs.length) {
-    el.runHistory.textContent = "暂无运行记录";
-    el.runHistory.classList.add("muted");
-    return;
-  }
-  el.runHistory.classList.remove("muted");
-  el.runHistory.innerHTML = "";
-  for (const run of runs) {
-    const button = document.createElement("button");
-    button.className = `run-row ${run.status || "unknown"}`;
-    button.type = "button";
-    const time = run.finishedAt || run.startedAt || run.runId;
-    button.innerHTML = `<span>${escapeHtml(run.status || "unknown")}</span><strong>${escapeHtml(time)}</strong>`;
-    button.addEventListener("click", () => {
-      if (run.finalFile && state.files.includes(run.finalFile)) {
-        openFileByPath(run.finalFile);
-      } else if (run.logFile && state.files.includes(run.logFile)) {
-        openFileByPath(run.logFile);
-      } else {
-        setStatus("这个运行记录没有可打开的结果文件。", "error");
-      }
-    });
-    el.runHistory.appendChild(button);
-  }
 }
 
 function syncStatusLabel(status) {
@@ -2190,6 +2677,7 @@ async function openSyncReview(review, index) {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/sync-review?runtimeDir=${encodeURIComponent(review.runtimeDir)}`);
     state.activeSyncReviewIndex = index;
     state.activeSyncReview = data;
+    state.activeSyncPreview = null;
     renderSyncReviews();
     setStatus("状态同步建议已载入。勾选确认后再应用到长期记忆。");
   } catch (error) {
@@ -2210,8 +2698,10 @@ function renderSyncReviewEditor() {
     <div class="sync-review-ops">
       <button type="button" data-sync-select-all>全选</button>
       <button type="button" data-sync-select-none>清空</button>
+      <button type="button" data-sync-preview>预览差异</button>
       <button type="button" data-sync-apply>应用选中</button>
     </div>
+    <div class="sync-diff-preview"></div>
   `;
   const items = box.querySelector(".sync-review-items");
   for (const item of review.items || []) {
@@ -2243,27 +2733,90 @@ function renderSyncReviewEditor() {
       child.querySelector("input").addEventListener("change", () => {
         const leafInputs = [...group.querySelectorAll("[data-sync-leaf]")];
         categoryInput.checked = leafInputs.length > 0 && leafInputs.every((input) => input.checked);
+        state.activeSyncPreview = null;
+        renderSyncDiffPreview(box);
       });
       children.appendChild(child);
     }
     categoryInput.addEventListener("change", () => {
       for (const input of group.querySelectorAll("[data-sync-leaf]")) input.checked = categoryInput.checked;
+      state.activeSyncPreview = null;
+      renderSyncDiffPreview(box);
     });
     items.appendChild(group);
   }
   box.querySelector("[data-sync-select-all]").addEventListener("click", () => {
     for (const input of box.querySelectorAll("input[type='checkbox']:not(:disabled)")) input.checked = true;
+    state.activeSyncPreview = null;
+    renderSyncDiffPreview(box);
   });
   box.querySelector("[data-sync-select-none]").addEventListener("click", () => {
     for (const input of box.querySelectorAll("input[type='checkbox']")) input.checked = false;
+    state.activeSyncPreview = null;
+    renderSyncDiffPreview(box);
   });
+  box.querySelector("[data-sync-preview]").addEventListener("click", () => previewSelectedSyncReview(box));
   box.querySelector("[data-sync-apply]").addEventListener("click", () => applySelectedSyncReview(box));
+  renderSyncDiffPreview(box);
   return box;
+}
+
+function selectedSyncReviewItemIds(box) {
+  return [...box.querySelectorAll("[data-sync-leaf]:checked")].map((input) => input.value);
+}
+
+function renderSyncDiffPreview(box) {
+  const panel = box.querySelector(".sync-diff-preview");
+  if (!panel) return;
+  const preview = state.activeSyncPreview;
+  if (!preview?.targets?.length) {
+    panel.classList.add("muted");
+    panel.textContent = "应用前可先预览差异：会列出目标文件、追加/合并方式和写入前后数量。";
+    return;
+  }
+  panel.classList.remove("muted");
+  panel.innerHTML = `
+    <div class="sync-diff-head">
+      <strong>写入前差异预览</strong>
+      <span>${escapeHtml(preview.targetCount || preview.targets.length)} 个目标文件</span>
+    </div>
+    <div class="sync-diff-list">
+      ${preview.targets.map((item) => `
+        <div class="sync-diff-row ${escapeAttr(item.operation || "")}">
+          <strong>${escapeHtml(item.label || item.id)}</strong>
+          <span>${escapeHtml(item.target)}</span>
+          <em>${escapeHtml(item.operation === "append-markdown" ? "追加 Markdown" : "合并 JSON")} · ${escapeHtml(item.beforeCount)} -> ${escapeHtml(item.afterCount)} · +${escapeHtml(item.delta)}</em>
+          <code>${escapeHtml(item.summary || "")}</code>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+async function previewSelectedSyncReview(box) {
+  if (!state.activeProject || !state.activeSyncReview) return;
+  const itemIds = selectedSyncReviewItemIds(box);
+  if (!itemIds.length) return setStatus("请至少勾选一项同步内容。", "error");
+  setStatus("正在预览状态同步差异...");
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/sync-review/preview`, {
+      method: "POST",
+      body: JSON.stringify({
+        runtimeDir: state.activeSyncReview.runtimeDir,
+        itemIds
+      })
+    });
+    state.activeSyncPreview = data.preview;
+    renderSyncDiffPreview(box);
+    setStatus(`差异预览完成：${data.preview?.targetCount || 0} 个目标文件。`);
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
 }
 
 async function applySelectedSyncReview(box) {
   if (!state.activeProject || !state.activeSyncReview) return;
-  const itemIds = [...box.querySelectorAll("[data-sync-leaf]:checked")].map((input) => input.value);
+  const itemIds = selectedSyncReviewItemIds(box);
   if (!itemIds.length) return setStatus("请至少勾选一项同步内容。", "error");
   setBusy(true);
   try {
@@ -2279,13 +2832,13 @@ async function applySelectedSyncReview(box) {
     state.chapters = data.project.chapters || [];
     state.snapshots = data.project.snapshots || [];
     state.activeSyncReview = null;
+    state.activeSyncPreview = null;
     renderProjects();
     renderFiles();
     renderProjectMeta();
     renderProjectStats();
     renderChapterBoard();
     renderSnapshots();
-    renderRunHistory();
     renderSyncReviews();
     setStatus(`状态同步已应用。应用前快照：${data.safetySnapshot?.id || "已创建"}`);
   } catch (error) {
@@ -2381,6 +2934,7 @@ on(el.toggleLeftPane, "click", () => togglePane("left"));
 on(el.toggleRightPane, "click", () => togglePane("right"));
 on(el.toggleNewProject, "click", () => toggleNewProjectPanel());
 on(el.toggleAiConfig, "click", () => toggleAiConfig());
+on(el.toggleMoreTools, "click", () => toggleMoreTools());
 on(el.pipelineRunner, "change", updateAiModeVisibility);
 on(el.openProjectFolder, "click", openProjectFolder);
 on(el.copyProjectPath, "click", copyProjectPath);
@@ -2388,6 +2942,9 @@ on(el.saveAiSettings, "click", saveAiSettings);
 on(el.archiveAssistantSelect, "change", renderArchiveAssistantHint);
 on(el.saveArchiveAssistant, "click", saveArchiveAssistant);
 el.openArchiveAssistant.addEventListener("click", () => openFileByPath("05_提示词/档案助手.md"));
+on(el.storyBibleSection, "change", renderStoryBible);
+on(el.saveStoryBibleEntry, "click", saveStoryBibleEntry);
+on(el.refreshStoryBible, "click", () => loadStoryBible(true));
 on(el.runDoctor, "click", () => runDoctor(true));
 on(el.createProject, "click", createProject);
 on(el.fileSelect, "change", loadSelectedFile);
@@ -2415,6 +2972,8 @@ on(el.cloneProject, "click", cloneCurrentProject);
 on(el.refreshVersions, "click", refreshVersions);
 on(el.incubateIdea, "click", incubateIdea);
 on(el.absorbKnowledge, "click", absorbKnowledge);
+on(el.analyzeStyleProfile, "click", analyzeStyleProfile);
+on(el.previewMemoryRecall, "click", previewMemoryRecall);
 on(el.runPipeline, "click", runPipeline);
 on(el.exportTxt, "click", () => exportProject("txt"));
 on(el.exportMd, "click", () => exportProject("md"));
@@ -2438,8 +2997,11 @@ loadLayoutState();
 initializeToolPanels();
 renderLayoutState();
 updateAiModeVisibility();
-setToolboxGroup(state.activeToolGroup || "all");
+setToolboxGroup(state.activeToolGroup || "write");
 renderGlobalSearchResults();
 renderTaskCenter();
 renderNarrativeRadar();
+renderStoryBible();
+renderStyleProfileResult();
+renderMemoryRecallResult();
 setAutosaveStatus("自动保存待机");

@@ -16,12 +16,16 @@ const CC_SWITCH_HOME = process.env.CC_SWITCH_HOME || path.join(HOME_DIR, ".cc-sw
 const HOST_PROJECTS_DIR = process.env.HOST_PROJECTS_DIR || "";
 const IN_DOCKER = process.env.IN_DOCKER === "true";
 const KNOWLEDGE_SOURCE_CHAR_LIMIT = 180000;
+const MEMORY_PINS_FILE = "04_连续性/memory_pins.json";
+const MEMORY_EXCLUSIONS_FILE = "04_连续性/memory_exclusions.json";
 
 const TEXT_TYPES = new Map([
   [".html", "text/html; charset=utf-8"],
   [".css", "text/css; charset=utf-8"],
   [".js", "text/javascript; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
+  [".svg", "image/svg+xml; charset=utf-8"],
+  [".ico", "image/x-icon"],
   [".md", "text/markdown; charset=utf-8"],
   [".txt", "text/plain; charset=utf-8"],
   [".csv", "text/csv; charset=utf-8"],
@@ -115,12 +119,15 @@ const DEFAULT_CONTEXT_FILES = [
   "04_连续性/world_state.json",
   "04_连续性/style_memory.json",
   "04_连续性/reader_promises.json",
+  MEMORY_PINS_FILE,
+  MEMORY_EXCLUSIONS_FILE,
   "05_提示词/正文生成规则.md",
   "05_提示词/降AI感规则.md",
   "05_提示词/项目能力包.md",
   "05_提示词/项目工作流.md",
   "05_提示词/多角色协作.md",
   "05_提示词/SKILL.md",
+  "05_提示词/文风模仿档案.md",
   "05_提示词/档案助手.md"
 ];
 
@@ -375,7 +382,20 @@ const TEMPLATE_FILES = [
   "voice": [],
   "preferredTextures": [],
   "bannedPatterns": [],
-  "chapterRhythm": []
+  "chapterRhythm": [],
+  "imitationProfile": {
+    "source": "project",
+    "rhythm": "",
+    "sentenceShape": "",
+    "dialogue": "",
+    "texture": [],
+    "avoid": [],
+    "guardrails": [
+      "只模仿本项目或作者授权样本的高层文风特征",
+      "不照搬原句、特定作者签名风格、独创设定或具体桥段"
+    ]
+  },
+  "samples": []
 }
 `
   },
@@ -386,6 +406,19 @@ const TEMPLATE_FILES = [
   "updatedAt": "",
   "promises": []
 }
+`
+  },
+  {
+    file: "05_提示词/文风模仿档案.md",
+    body: `# 文风模仿档案
+
+用于记录作者自己的样稿或本项目已确认正文的高层文风画像。
+
+## 使用边界
+
+- 只提取节奏、句式、对话密度、细节偏好、禁用表达等可迁移写作特征。
+- 不照搬原句，不模仿特定在世作者的签名风格、独创设定或具体桥段。
+- 默认服务于“更像本项目自己的文字”，不是复制外部作品。
 `
   },
   {
@@ -1762,6 +1795,98 @@ ${conflicts.length ? conflicts.map((item) => `- **${item.type}**：${item.detail
   return { conflicts, reportFile };
 }
 
+function normalizeConflictInput(conflict = {}) {
+  return {
+    type: String(conflict.type || ""),
+    key: String(conflict.key || ""),
+    files: Array.isArray(conflict.files) ? conflict.files : [],
+    detail: String(conflict.detail || "")
+  };
+}
+
+async function createConflictRepairPlan(projectId, conflictInput = {}) {
+  const conflict = normalizeConflictInput(conflictInput);
+  if (conflict.type === "人物状态重复" && conflict.key) {
+    const data = await readProjectJsonFile(projectId, "04_连续性/character_state.json", { version: 1, characters: [] });
+    const matches = (data.characters || []).filter((item) => (item.name || item.id) === conflict.key);
+    return {
+      conflict,
+      plan: {
+        title: `合并重复人物状态：${conflict.key}`,
+        targetFiles: ["04_连续性/character_state.json"],
+        risk: matches.length > 1 ? "medium" : "low",
+        actions: [{
+          action: "dedupe-character-state",
+          key: conflict.key,
+          target: "04_连续性/character_state.json",
+          beforeCount: matches.length,
+          afterCount: matches.length ? 1 : 0,
+          summary: "保留第一条人物记录，并把后续重复记录的空缺字段合并进去。"
+        }]
+      }
+    };
+  }
+  const err = new Error("当前只支持修复人物状态重复冲突");
+  err.status = 400;
+  throw err;
+}
+
+function mergeCharacterRecords(primary = {}, duplicate = {}) {
+  const merged = { ...primary };
+  for (const [key, value] of Object.entries(duplicate || {})) {
+    if (merged[key] == null || merged[key] === "" || (Array.isArray(merged[key]) && !merged[key].length)) {
+      merged[key] = value;
+    } else if (Array.isArray(merged[key]) && Array.isArray(value)) {
+      merged[key] = [...new Set([...merged[key], ...value])];
+    }
+  }
+  return merged;
+}
+
+async function applyConflictRepair(projectId, conflictInput = {}) {
+  const { conflict, plan } = await createConflictRepairPlan(projectId, conflictInput);
+  const snapshot = await createProjectSnapshot(projectId, {
+    note: `修复记忆冲突前：${conflict.type} ${conflict.key}`,
+    reason: "before_conflict_repair"
+  });
+  if (conflict.type === "人物状态重复") {
+    const data = await readProjectJsonFile(projectId, "04_连续性/character_state.json", { version: 1, characters: [] });
+    const kept = [];
+    let merged = null;
+    for (const item of data.characters || []) {
+      if ((item.name || item.id) !== conflict.key) {
+        kept.push(item);
+        continue;
+      }
+      merged = merged ? mergeCharacterRecords(merged, item) : item;
+    }
+    if (merged) kept.push({ ...merged, updatedAt: new Date().toISOString(), conflictResolved: true });
+    data.characters = kept;
+    data.updatedAt = new Date().toISOString();
+    await writeProjectFile(projectId, "04_连续性/character_state.json", JSON.stringify(data, null, 2) + "\n");
+  }
+  const reportFile = `04_连续性/记忆冲突修复_${timestampId()}.md`;
+  await writeProjectFile(projectId, reportFile, `# 记忆冲突修复报告
+
+生成时间：${new Date().toISOString()}
+
+## 冲突
+
+- 类型：${conflict.type}
+- 关键值：${conflict.key}
+- 详情：${conflict.detail || "无"}
+
+## 修复动作
+
+${plan.actions.map((item) => `- ${item.summary}（${item.beforeCount} -> ${item.afterCount}）`).join("\n")}
+
+## 安全快照
+
+${snapshot.id}
+`);
+  return { applied: true, conflict, plan, reportFile, safetySnapshot: snapshot };
+}
+
 async function generatePublishMaterials(projectId, { platform = "通用", from = "", to = "" } = {}) {
   const meta = JSON.parse(await fs.readFile(projectPath(projectId, "project.json"), "utf8"));
   const chapters = await listChapters(projectId);
@@ -2113,8 +2238,97 @@ async function listStateSyncReviews(projectId, files = null) {
     .slice(0, 8);
 }
 
+const TASK_INDEX_FILE = "09_运行时/tasks.json";
+
+function taskTitleForKind(kind) {
+  return {
+    codex: "Codex 直连任务",
+    "sync-review": "状态同步审核",
+    revision: "修订任务",
+    pipeline: "多阶段流水线",
+    idea: "创意孵化",
+    knowledge: "资料投喂",
+    style: "文风模仿",
+    quality: "质检任务",
+    publish: "发布资料",
+    conflict: "记忆冲突",
+    maintenance: "项目维护",
+    export: "导出任务"
+  }[kind] || "项目任务";
+}
+
+function normalizeTaskRecord(task = {}) {
+  const kind = String(task.kind || "task");
+  const files = Array.isArray(task.files)
+    ? task.files.filter(Boolean).map((file) => String(file).replaceAll("\\", "/"))
+    : [task.file, task.reportFile, task.taskFile, task.revisionFile].filter(Boolean).map((file) => String(file).replaceAll("\\", "/"));
+  const runtimeDir = String(task.runtimeDir || "").replaceAll("\\", "/");
+  const detail = String(task.detail || files[0] || runtimeDir || "").trim();
+  const now = new Date().toISOString();
+  const id = String(task.id || `${kind}:${detail || task.title || now}`);
+  const status = String(task.status || "completed");
+  return {
+    id,
+    source: task.source || "task-index",
+    kind,
+    status,
+    title: String(task.title || taskTitleForKind(kind)),
+    detail,
+    runtimeDir,
+    files,
+    startedAt: task.startedAt || task.createdAt || now,
+    finishedAt: task.finishedAt || (["completed", "success", "ready"].includes(status) ? now : ""),
+    updatedAt: task.updatedAt || now
+  };
+}
+
+async function readProjectTaskIndex(projectId) {
+  const data = await readProjectJsonFile(projectId, TASK_INDEX_FILE, { version: 1, tasks: [] });
+  return {
+    version: 1,
+    updatedAt: data.updatedAt || "",
+    tasks: Array.isArray(data.tasks) ? data.tasks.map(normalizeTaskRecord) : []
+  };
+}
+
+async function recordProjectTask(projectId, task) {
+  const index = await readProjectTaskIndex(projectId);
+  const next = normalizeTaskRecord(task);
+  const tasks = [next, ...index.tasks.filter((item) => item.id !== next.id)]
+    .sort((a, b) => String(b.updatedAt || b.finishedAt || b.startedAt || b.detail).localeCompare(String(a.updatedAt || a.finishedAt || a.startedAt || a.detail), "zh-Hans-CN"))
+    .slice(0, 100);
+  await writeProjectFile(projectId, TASK_INDEX_FILE, JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), tasks }, null, 2) + "\n");
+  return next;
+}
+
+function mergeTaskLists(...lists) {
+  const byId = new Map();
+  for (const task of lists.flat()) {
+    if (!task) continue;
+    const normalized = normalizeTaskRecord(task);
+    const existing = byId.get(normalized.id);
+    if (!existing) {
+      byId.set(normalized.id, normalized);
+    } else {
+      byId.set(normalized.id, {
+        ...existing,
+        status: normalized.status || existing.status,
+        files: [...new Set([...(existing.files || []), ...(normalized.files || [])])],
+        finishedAt: normalized.finishedAt || existing.finishedAt,
+        updatedAt: normalized.updatedAt || existing.updatedAt,
+        detail: existing.detail || normalized.detail,
+        runtimeDir: existing.runtimeDir || normalized.runtimeDir
+      });
+    }
+  }
+  return [...byId.values()]
+    .sort((a, b) => String(b.updatedAt || b.finishedAt || b.startedAt || b.detail).localeCompare(String(a.updatedAt || a.finishedAt || a.startedAt || a.detail), "zh-Hans-CN"))
+    .slice(0, 40);
+}
+
 async function listProjectTasks(projectId, files = null) {
   const allFiles = files || (await listMarkdownFiles(projectId));
+  const taskIndex = await readProjectTaskIndex(projectId);
   const codexRuns = await listCodexRuns(projectId);
   const syncReviews = await listStateSyncReviews(projectId, allFiles);
   const revisionTasks = allFiles
@@ -2122,6 +2336,7 @@ async function listProjectTasks(projectId, files = null) {
     .slice(-10)
     .map((file) => ({
       id: `revision:${file}`,
+      source: "scan",
       kind: "revision",
       status: "ready",
       title: "修订任务单",
@@ -2135,6 +2350,7 @@ async function listProjectTasks(projectId, files = null) {
     .slice(-10)
     .map((file) => ({
       id: `quality:${file}`,
+      source: "scan",
       kind: "quality",
       status: "completed",
       title: "质检报告",
@@ -2145,6 +2361,7 @@ async function listProjectTasks(projectId, files = null) {
     }));
   const runTasks = codexRuns.map((run) => ({
     id: `codex:${run.runId}`,
+    source: "scan",
     kind: "codex",
     status: run.status || "unknown",
     title: "Codex 直连任务",
@@ -2156,6 +2373,7 @@ async function listProjectTasks(projectId, files = null) {
   }));
   const syncTasks = syncReviews.map((review) => ({
     id: `sync:${review.runtimeDir}`,
+    source: "scan",
     kind: "sync-review",
     status: review.status || "pending",
     title: "状态同步审核",
@@ -2166,9 +2384,7 @@ async function listProjectTasks(projectId, files = null) {
     finishedAt: review.updatedAt || ""
   }));
 
-  return [...runTasks, ...syncTasks, ...revisionTasks, ...qualityReports]
-    .sort((a, b) => String(b.finishedAt || b.startedAt || b.detail).localeCompare(String(a.finishedAt || a.startedAt || a.detail), "zh-Hans-CN"))
-    .slice(0, 40);
+  return mergeTaskLists(taskIndex.tasks, runTasks, syncTasks, revisionTasks, qualityReports);
 }
 
 async function searchProjectFiles(projectId, query) {
@@ -2573,6 +2789,570 @@ async function gatherContext(projectId, selectedFiles = []) {
   return blocks.join("\n\n---\n\n");
 }
 
+function textStats(text) {
+  const raw = String(text || "").trim();
+  const paragraphs = raw.split(/\r?\n+/).map((item) => item.trim()).filter(Boolean);
+  const sentences = raw.split(/[。！？!?；;]/).map((item) => item.trim()).filter(Boolean);
+  const dialogueParagraphs = paragraphs.filter((item) => /^["“「『]/.test(item) || /[”」』"]$/.test(item));
+  const avgSentenceLength = sentences.length ? Math.round(raw.replace(/\s/g, "").length / sentences.length) : 0;
+  const avgParagraphLength = paragraphs.length ? Math.round(raw.replace(/\s/g, "").length / paragraphs.length) : 0;
+  return {
+    chars: raw.replace(/\s/g, "").length,
+    paragraphs: paragraphs.length,
+    sentences: sentences.length,
+    dialogueRatio: paragraphs.length ? Math.round((dialogueParagraphs.length / paragraphs.length) * 100) : 0,
+    avgSentenceLength,
+    avgParagraphLength
+  };
+}
+
+function topTerms(text, candidates, limit = 8) {
+  const content = String(text || "");
+  return candidates
+    .map((term) => ({ term, count: content.split(term).length - 1 }))
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count || a.term.localeCompare(b.term, "zh-Hans-CN"))
+    .slice(0, limit)
+    .map((item) => item.term);
+}
+
+function buildStyleProfileFromSample(sample, note = "") {
+  const stats = textStats(sample);
+  const sensory = topTerms(sample, ["雨", "风", "灯", "门", "影", "血", "火", "烟", "水", "冷", "热", "暗", "亮", "声", "笑", "手", "眼"]);
+  const aiLike = topTerms(sample, NARRATIVE_RADAR_RULES.aiTone, 10);
+  const cliche = topTerms(sample, NARRATIVE_RADAR_RULES.cliches, 10);
+  const action = topTerms(sample, NARRATIVE_RADAR_RULES.mechanicalActions, 10);
+  const rhythm = stats.avgParagraphLength <= 45
+    ? "短段推进，适合移动端快速阅读"
+    : stats.avgParagraphLength <= 90
+      ? "中短段混合，叙述和动作并行"
+      : "长段叙述较多，需要生成时主动拆段";
+  const sentenceShape = stats.avgSentenceLength <= 18
+    ? "短句偏多，适合制造停顿、压迫和现场感"
+    : stats.avgSentenceLength <= 32
+      ? "中短句为主，叙述清楚但保留节奏变化"
+      : "长句偏多，生成时需控制信息密度";
+  const dialogue = stats.dialogueRatio >= 35
+    ? "对话占比较高，人物关系和信息推进适合交给对白完成"
+    : stats.dialogueRatio >= 15
+      ? "对话与动作均衡，适合用短对白制造压力"
+      : "叙述占比较高，生成时需补足人物交锋和口语反应";
+  return {
+    source: "author_sample",
+    note: String(note || "").trim(),
+    stats,
+    rhythm,
+    sentenceShape,
+    dialogue,
+    texture: sensory.length ? sensory : ["具体物件", "动作停顿", "场景声响"],
+    avoid: [...new Set([...aiLike, ...cliche, "说明书式设定倾倒", "总结式心理解释"])],
+    actionVerbs: action,
+    guardrails: [
+      "只模仿作者授权样本或本项目正文的高层文风特征",
+      "不照搬样本原句，不复刻特定作者签名风格、独创设定或具体桥段",
+      "优先服务于本项目人物、情节和连续性，而不是机械复刻表面语气"
+    ],
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function styleProfileMarkdown(profile, sampleFile = "") {
+  return `# 文风模仿档案
+
+更新时间：${profile.updatedAt || new Date().toISOString()}
+来源：${profile.note || "作者样本 / 项目正文"}
+样本文件：${sampleFile || "未记录"}
+
+## 风格画像
+
+- 节奏：${profile.rhythm}
+- 句式：${profile.sentenceShape}
+- 对话：${profile.dialogue}
+- 细节偏好：${(profile.texture || []).join("、") || "具体物件、动作停顿、场景声响"}
+- 动作词倾向：${(profile.actionVerbs || []).join("、") || "无明显高频动作词"}
+
+## 生成时模仿
+
+- 保留上述节奏、句式和细节偏好。
+- 情绪优先通过动作、物件、停顿、声音、误会和潜台词表现。
+- 对话允许不完整、回避、打断和答非所问。
+
+## 避免
+
+${(profile.avoid || []).map((item) => `- ${item}`).join("\n") || "- 不要说明书式设定倾倒。\n- 不要总结式心理解释。"}
+
+## 边界
+
+${(profile.guardrails || []).map((item) => `- ${item}`).join("\n")}
+`;
+}
+
+async function analyzeStyleProfile(projectId, { sample = "", note = "" } = {}) {
+  const content = String(sample || "").trim();
+  if (content.length < 40) {
+    const err = new Error("文风样本太短，请至少提供 40 个字");
+    err.status = 400;
+    throw err;
+  }
+  if (content.length > 20000) {
+    const err = new Error("文风样本太长，请控制在 20000 字以内，可分批投喂");
+    err.status = 413;
+    throw err;
+  }
+  const stamp = timestampId();
+  const sampleFile = `08_资料投喂/风格样本_${stamp}.md`;
+  await writeProjectFile(projectId, sampleFile, `# 风格样本\n\n备注：${note || "无"}\n\n---\n\n${content}\n`);
+  const profile = buildStyleProfileFromSample(content, note);
+  const style = await readProjectJsonFile(projectId, "04_连续性/style_memory.json", { version: 1, voice: [], preferredTextures: [], bannedPatterns: [], chapterRhythm: [], samples: [] });
+  style.version = 1;
+  style.updatedAt = profile.updatedAt;
+  style.imitationProfile = profile;
+  style.preferredTextures = [...new Set([...(style.preferredTextures || []), ...(profile.texture || [])])].slice(0, 24);
+  style.bannedPatterns = [...new Set([...(style.bannedPatterns || []), ...(profile.avoid || [])])].slice(0, 40);
+  style.chapterRhythm = [...new Set([...(style.chapterRhythm || []), profile.rhythm, profile.sentenceShape])].filter(Boolean).slice(0, 20);
+  style.samples = [{ file: sampleFile, note: note || "", chars: profile.stats.chars, updatedAt: profile.updatedAt }, ...(style.samples || [])].slice(0, 20);
+  await writeProjectFile(projectId, "04_连续性/style_memory.json", JSON.stringify(style, null, 2) + "\n");
+  const profileFile = "05_提示词/文风模仿档案.md";
+  await writeProjectFile(projectId, profileFile, styleProfileMarkdown(profile, sampleFile));
+  return { profile, sampleFile, profileFile, memoryFile: "04_连续性/style_memory.json" };
+}
+
+function memoryKeywordSet({ brief = "", title = "", draft = "", activeFile = "" } = {}) {
+  const source = String(`${brief} ${title} ${draft} ${activeFile}`);
+  const keywords = [];
+  for (const token of source.split(/[^\p{Script=Han}A-Za-z0-9_]+/u).map((item) => item.trim()).filter(Boolean)) {
+    if (token.length >= 2) keywords.push(token);
+    for (const han of token.match(/\p{Script=Han}{2,}/gu) || []) {
+      for (const size of [2, 3, 4]) {
+        for (let index = 0; index <= han.length - size; index += 1) {
+          keywords.push(han.slice(index, index + size));
+        }
+      }
+    }
+  }
+  return [...new Set(keywords)]
+    .filter((item) => item.length >= 2 && !["需要", "当前", "项目", "根据", "测试", "任务", "召回"].includes(item))
+    .slice(0, 80);
+}
+
+function scoreMemoryText(text, keywords = []) {
+  const content = String(text || "");
+  const hits = keywords.filter((keyword) => content.includes(keyword));
+  const uniqueHits = [...new Set(hits)];
+  return {
+    score: uniqueHits.reduce((sum, keyword) => sum + Math.min(6, keyword.length), 0),
+    hits: uniqueHits.slice(0, 12)
+  };
+}
+
+function compactMemoryText(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map(compactMemoryText).filter(Boolean).join(" / ");
+  return Object.entries(value)
+    .map(([key, item]) => `${key}:${compactMemoryText(item)}`)
+    .filter((item) => item.length > 1)
+    .join(" / ");
+}
+
+function rankMemoryItems(items, keywords, mapper, limit = 6) {
+  return (items || [])
+    .map((item, index) => {
+      const mapped = mapper(item, index);
+      const text = mapped.text || compactMemoryText(item);
+      const scored = scoreMemoryText(text, keywords);
+      return { ...mapped, score: scored.score, hits: scored.hits, text: text.slice(0, 700) };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score || String(a.text).localeCompare(String(b.text), "zh-Hans-CN"))
+    .slice(0, limit);
+}
+
+function parseForeshadowRows(markdown = "") {
+  return String(markdown || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("|") && !/^\|\s*-+/.test(line) && !/伏笔\s*\|/.test(line))
+    .map((line) => {
+      const cells = line.split("|").map((cell) => cell.trim()).filter(Boolean);
+      return {
+        id: cells[0] || "",
+        text: cells.join(" / "),
+        status: cells[2] || "",
+        plan: cells[4] || ""
+      };
+    });
+}
+
+function memoryPinChapterKey(input = {}) {
+  return `${String(input.chapterNo || "").trim()}::${String(input.title || "").trim()}`;
+}
+
+function normalizeMemoryPin(input = {}) {
+  const item = input.item || input;
+  const type = String(item.type || "memory").trim().slice(0, 48);
+  const text = String(item.text || item.label || item.name || item.id || "").trim().slice(0, 900);
+  if (!text) {
+    const err = new Error("钉选记忆缺少可读内容");
+    err.status = 400;
+    throw err;
+  }
+  return {
+    id: String(item.id || `${type}-${Date.now()}`).trim().slice(0, 80),
+    type,
+    label: String(item.label || item.name || item.id || type).trim().slice(0, 120),
+    text,
+    source: String(item.source || "").trim().slice(0, 160),
+    chapterNo: String(input.chapterNo || item.chapterNo || "").trim(),
+    title: String(input.title || item.title || "").trim(),
+    pinnedAt: item.pinnedAt || new Date().toISOString()
+  };
+}
+
+function normalizeMemoryExclusion(input = {}) {
+  const item = input.item || input;
+  const type = String(item.type || "memory").trim().slice(0, 48);
+  const text = String(item.text || item.label || item.name || item.id || "").trim().slice(0, 900);
+  if (!text) {
+    const err = new Error("排除记忆缺少可读内容");
+    err.status = 400;
+    throw err;
+  }
+  return {
+    id: String(item.id || `${type}-${Date.now()}`).trim().slice(0, 80),
+    type,
+    label: String(item.label || item.name || item.id || type).trim().slice(0, 120),
+    text,
+    source: String(item.source || "").trim().slice(0, 160),
+    chapterNo: String(input.chapterNo || item.chapterNo || "").trim(),
+    title: String(input.title || item.title || "").trim(),
+    excludedAt: item.excludedAt || new Date().toISOString()
+  };
+}
+
+async function readMemoryPins(projectId) {
+  const data = await readProjectJsonFile(projectId, MEMORY_PINS_FILE, { version: 1, pins: [] });
+  return {
+    version: 1,
+    updatedAt: data.updatedAt || "",
+    pins: Array.isArray(data.pins) ? data.pins.map((item) => normalizeMemoryPin(item)) : []
+  };
+}
+
+async function readMemoryExclusions(projectId) {
+  const data = await readProjectJsonFile(projectId, MEMORY_EXCLUSIONS_FILE, { version: 1, exclusions: [] });
+  return {
+    version: 1,
+    updatedAt: data.updatedAt || "",
+    exclusions: Array.isArray(data.exclusions) ? data.exclusions.map((item) => normalizeMemoryExclusion(item)) : []
+  };
+}
+
+async function writeMemoryPins(projectId, pins) {
+  const data = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    pins
+  };
+  await writeProjectFile(projectId, MEMORY_PINS_FILE, JSON.stringify(data, null, 2) + "\n");
+  return data;
+}
+
+async function writeMemoryExclusions(projectId, exclusions) {
+  const data = {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    exclusions
+  };
+  await writeProjectFile(projectId, MEMORY_EXCLUSIONS_FILE, JSON.stringify(data, null, 2) + "\n");
+  return data;
+}
+
+async function pinProjectMemory(projectId, body = {}) {
+  const pin = normalizeMemoryPin(body);
+  const index = await readMemoryPins(projectId);
+  const targetKey = memoryPinChapterKey(pin);
+  const samePin = (item) => item.type === pin.type && item.id === pin.id && memoryPinChapterKey(item) === targetKey;
+  const pins = [pin, ...index.pins.filter((item) => !samePin(item))].slice(0, 80);
+  return writeMemoryPins(projectId, pins);
+}
+
+async function excludeProjectMemory(projectId, body = {}) {
+  const exclusion = normalizeMemoryExclusion(body);
+  const index = await readMemoryExclusions(projectId);
+  const targetKey = memoryPinChapterKey(exclusion);
+  const sameExclusion = (item) => item.type === exclusion.type && item.id === exclusion.id && memoryPinChapterKey(item) === targetKey;
+  const exclusions = [exclusion, ...index.exclusions.filter((item) => !sameExclusion(item))].slice(0, 80);
+  return writeMemoryExclusions(projectId, exclusions);
+}
+
+async function unpinProjectMemory(projectId, body = {}) {
+  const index = await readMemoryPins(projectId);
+  const target = normalizeMemoryPin({ ...body, text: body.text || body.label || body.id || "remove" });
+  const targetKey = memoryPinChapterKey(target);
+  const pins = index.pins.filter((item) => !(item.type === target.type && item.id === target.id && memoryPinChapterKey(item) === targetKey));
+  return writeMemoryPins(projectId, pins);
+}
+
+async function unexcludeProjectMemory(projectId, body = {}) {
+  const index = await readMemoryExclusions(projectId);
+  const target = normalizeMemoryExclusion({ ...body, text: body.text || body.label || body.id || "remove" });
+  const targetKey = memoryPinChapterKey(target);
+  const exclusions = index.exclusions.filter((item) => !(item.type === target.type && item.id === target.id && memoryPinChapterKey(item) === targetKey));
+  return writeMemoryExclusions(projectId, exclusions);
+}
+
+async function recallPinnedMemory(projectId, input = {}) {
+  const index = await readMemoryPins(projectId);
+  const currentKey = memoryPinChapterKey(input);
+  const globalKey = memoryPinChapterKey({});
+  return index.pins
+    .filter((item) => {
+      const key = memoryPinChapterKey(item);
+      return key === currentKey || key === globalKey;
+    })
+    .slice(0, 12);
+}
+
+async function recallExcludedMemory(projectId, input = {}) {
+  const index = await readMemoryExclusions(projectId);
+  const currentKey = memoryPinChapterKey(input);
+  const globalKey = memoryPinChapterKey({});
+  return index.exclusions
+    .filter((item) => {
+      const key = memoryPinChapterKey(item);
+      return key === currentKey || key === globalKey;
+    })
+    .slice(0, 12);
+}
+
+function memoryItemMatchesControl(type, item = {}, control = {}) {
+  if (control.type !== type) return false;
+  const candidates = [
+    item.id,
+    item.name,
+    item.label,
+    item.thread,
+    item.promise,
+    item.question
+  ].filter(Boolean).map(String);
+  if (control.id && candidates.includes(String(control.id))) return true;
+  if (control.label && candidates.includes(String(control.label))) return true;
+  const itemText = String(item.text || compactMemoryText(item) || "");
+  const controlText = String(control.text || "").slice(0, 120);
+  return Boolean(controlText && itemText.includes(controlText));
+}
+
+function filterExcludedMemory(type, items = [], exclusions = []) {
+  return (items || []).filter((item) => !exclusions.some((control) => memoryItemMatchesControl(type, item, control)));
+}
+
+function filterRankedMemory(ranked = {}, exclusions = []) {
+  return Object.fromEntries(Object.entries(ranked).map(([type, items]) => [type, filterExcludedMemory(type, items, exclusions)]));
+}
+
+function storyBibleItemFromMemory(item = {}, fallbackId = "") {
+  const id = String(item.id || item.name || item.thread || item.promise || item.question || fallbackId || "").trim();
+  const name = String(item.name || item.thread || item.promise || item.question || item.rule || item.title || id || "未命名").trim();
+  const status = String(item.status || item.emotionalState || item.state || "").trim();
+  const summary = String(item.summary || item.goal || item.next || item.payoffPlan || item.rule || item.text || compactMemoryText(item)).trim();
+  const note = String(item.note || item.currentLocation || item.detail || "").trim();
+  return { id, name, status, summary, note, raw: item };
+}
+
+async function readStoryBible(projectId) {
+  const characterState = await readProjectJsonFile(projectId, "04_连续性/character_state.json", { version: 1, characters: [] });
+  const plotThreads = await readProjectJsonFile(projectId, "04_连续性/plot_threads.json", { version: 1, threads: [] });
+  const readerPromises = await readProjectJsonFile(projectId, "04_连续性/reader_promises.json", { version: 1, promises: [] });
+  const worldState = await readProjectJsonFile(projectId, "04_连续性/world_state.json", { version: 1, rules: [] });
+  return {
+    sections: {
+      characters: {
+        label: "人物",
+        file: "04_连续性/character_state.json",
+        items: toArray(characterState.characters).map((item, index) => storyBibleItemFromMemory(item, `character-${index}`))
+      },
+      plotThreads: {
+        label: "剧情线",
+        file: "04_连续性/plot_threads.json",
+        items: toArray(plotThreads.threads).map((item, index) => storyBibleItemFromMemory(item, `thread-${index}`))
+      },
+      readerPromises: {
+        label: "读者承诺",
+        file: "04_连续性/reader_promises.json",
+        items: toArray(readerPromises.promises).map((item, index) => storyBibleItemFromMemory(item, `promise-${index}`))
+      },
+      worldRules: {
+        label: "世界规则",
+        file: "04_连续性/world_state.json",
+        items: toArray(worldState.rules).map((item, index) => storyBibleItemFromMemory(item, `rule-${index}`))
+      }
+    }
+  };
+}
+
+function normalizeStoryBibleEntry(section, item = {}) {
+  const id = String(item.id || item.name || `${section}-${Date.now()}`).trim().slice(0, 80);
+  const name = String(item.name || item.title || item.summary || id).trim().slice(0, 160);
+  const status = String(item.status || "").trim().slice(0, 120);
+  const summary = String(item.summary || item.note || "").trim().slice(0, 900);
+  const note = String(item.note || "").trim().slice(0, 900);
+  if (!id || !name) {
+    const err = new Error("故事圣经条目缺少 id 或名称");
+    err.status = 400;
+    throw err;
+  }
+  if (section === "characters") {
+    return { id, name, emotionalState: status, goal: summary, note, updatedAt: new Date().toISOString() };
+  }
+  if (section === "plotThreads") {
+    return { id, thread: name, status, next: summary, note, updatedAt: new Date().toISOString() };
+  }
+  if (section === "readerPromises") {
+    return { id, promise: name, status, payoffPlan: summary, note, updatedAt: new Date().toISOString() };
+  }
+  if (section === "worldRules") {
+    return { id, rule: name, status, detail: summary, note, updatedAt: new Date().toISOString() };
+  }
+  const err = new Error("不支持的故事圣经分区");
+  err.status = 400;
+  throw err;
+}
+
+function upsertById(list, item) {
+  const next = Array.isArray(list) ? [...list] : [];
+  const index = next.findIndex((entry) => String(entry.id || entry.name || entry.thread || entry.promise || entry.rule) === String(item.id));
+  if (index >= 0) next[index] = { ...next[index], ...item };
+  else next.push(item);
+  return next;
+}
+
+async function saveStoryBibleEntry(projectId, body = {}) {
+  const section = String(body.section || "").trim();
+  const item = normalizeStoryBibleEntry(section, body.item || {});
+  const now = new Date().toISOString();
+  if (section === "characters") {
+    const data = await readProjectJsonFile(projectId, "04_连续性/character_state.json", { version: 1, characters: [] });
+    data.characters = upsertById(data.characters, item);
+    data.updatedAt = now;
+    await writeProjectFile(projectId, "04_连续性/character_state.json", JSON.stringify(data, null, 2) + "\n");
+  } else if (section === "plotThreads") {
+    const data = await readProjectJsonFile(projectId, "04_连续性/plot_threads.json", { version: 1, threads: [] });
+    data.threads = upsertById(data.threads, item);
+    data.updatedAt = now;
+    await writeProjectFile(projectId, "04_连续性/plot_threads.json", JSON.stringify(data, null, 2) + "\n");
+  } else if (section === "readerPromises") {
+    const data = await readProjectJsonFile(projectId, "04_连续性/reader_promises.json", { version: 1, promises: [] });
+    data.promises = upsertById(data.promises, item);
+    data.updatedAt = now;
+    await writeProjectFile(projectId, "04_连续性/reader_promises.json", JSON.stringify(data, null, 2) + "\n");
+  } else if (section === "worldRules") {
+    const data = await readProjectJsonFile(projectId, "04_连续性/world_state.json", { version: 1, rules: [] });
+    data.rules = upsertById(data.rules, item);
+    data.updatedAt = now;
+    await writeProjectFile(projectId, "04_连续性/world_state.json", JSON.stringify(data, null, 2) + "\n");
+  } else {
+    const err = new Error("不支持的故事圣经分区");
+    err.status = 400;
+    throw err;
+  }
+  return readStoryBible(projectId);
+}
+
+async function recallStructuredMemory(projectId, keywords = []) {
+  const characterState = await readProjectJsonFile(projectId, "04_连续性/character_state.json", { characters: [] });
+  const plotThreads = await readProjectJsonFile(projectId, "04_连续性/plot_threads.json", { threads: [] });
+  const readerPromises = await readProjectJsonFile(projectId, "04_连续性/reader_promises.json", { promises: [] });
+  const foreshadowsText = await readProjectFile(projectId, "04_连续性/伏笔回收表.md").catch(() => "");
+  const chapterLog = await readProjectFile(projectId, "04_连续性/章节日志.md").catch(() => "");
+  const emotionLedger = await readProjectFile(projectId, "04_连续性/情绪账本.md").catch(() => "");
+  const characters = rankMemoryItems(characterState.characters, keywords, (item) => ({
+    id: item.id || item.name || "",
+    name: item.name || item.id || "人物",
+    text: compactMemoryText(item)
+  }));
+  const foreshadows = rankMemoryItems(parseForeshadowRows(foreshadowsText), keywords, (item) => item);
+  const plotThreadItems = Array.isArray(plotThreads.threads) ? plotThreads.threads : [];
+  const threadRank = rankMemoryItems(plotThreadItems, keywords, (item) => ({
+    id: item.id || item.thread || item.name || "",
+    status: item.status || "",
+    text: compactMemoryText(item)
+  }));
+  const promiseItems = Array.isArray(readerPromises.promises) ? readerPromises.promises : [];
+  const promisesRank = rankMemoryItems(promiseItems, keywords, (item) => ({
+    id: item.id || item.promise || item.question || "",
+    status: item.status || "",
+    text: compactMemoryText(item)
+  }));
+  const similarChapters = rankMemoryItems(
+    chapterLog.split(/\r?\n/).filter((line) => line.trim().length > 8),
+    keywords,
+    (line, index) => ({ id: `chapter-log-${index}`, text: line }),
+    5
+  );
+  const emotionBeats = rankMemoryItems(
+    emotionLedger.split(/\r?\n/).filter((line) => line.trim().length > 8),
+    keywords,
+    (line, index) => ({ id: `emotion-${index}`, text: line }),
+    5
+  );
+  return {
+    characters,
+    foreshadows,
+    plotThreads: threadRank,
+    readerPromises: promisesRank,
+    similarChapters,
+    emotionBeats
+  };
+}
+
+async function recallProjectMemory(projectId, input = {}) {
+  const keywords = memoryKeywordSet(input);
+  const style = await readProjectJsonFile(projectId, "04_连续性/style_memory.json", { version: 1 });
+  const rawRanked = await recallStructuredMemory(projectId, keywords);
+  const excluded = await recallExcludedMemory(projectId, input);
+  const ranked = filterRankedMemory(rawRanked, excluded);
+  const pinned = (await recallPinnedMemory(projectId, input)).filter((item) => !excluded.some((control) => memoryItemMatchesControl(item.type || "memory", item, control)));
+  const files = [
+    "00_总控/author_intent.md",
+    "00_总控/current_focus.md",
+    "04_连续性/章节日志.md",
+    "04_连续性/伏笔回收表.md",
+    "04_连续性/情绪账本.md",
+    "04_连续性/plot_threads.json",
+    "04_连续性/reader_promises.json",
+    "05_提示词/文风模仿档案.md"
+  ];
+  const relevant = [];
+  for (const file of files) {
+    let content = "";
+    try {
+      content = await readProjectFile(projectId, file);
+    } catch {
+      continue;
+    }
+    const hits = keywords.filter((keyword) => content.includes(keyword)).slice(0, 8);
+    if (hits.length || file.includes("文风模仿档案")) {
+      relevant.push({ file, hits, excerpt: content.trim().slice(0, 700) });
+    }
+  }
+  return {
+    keywords,
+    styleImitation: {
+      profileFile: relevant.find((item) => item.file === "05_提示词/文风模仿档案.md")?.file || "",
+      profile: style.imitationProfile || null,
+      guardrails: style.imitationProfile?.guardrails || [
+        "不照搬原句、特定作者签名风格、独创设定或具体桥段"
+      ]
+    },
+    excluded,
+    pinned,
+    ranked,
+    relevant: relevant.slice(0, 12)
+  };
+}
+
 function yamlString(value) {
   return `"${String(value ?? "").replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
 }
@@ -2639,6 +3419,12 @@ priority:
       - ${yamlString("04_连续性/world_state.json")}
       - ${yamlString("04_连续性/style_memory.json")}
       - ${yamlString("04_连续性/reader_promises.json")}
+  - name: style_imitation
+    level: high
+    source: ${yamlString("05_提示词/文风模仿档案.md")}
+    policy:
+      - ${yamlString("只模仿作者授权样本或本项目正文的高层风格特征")}
+      - ${yamlString("不照搬原句、特定作者签名风格、独创设定或具体桥段")}
 selected_context:
 ${selected}
 conflict_policy:
@@ -2654,6 +3440,7 @@ async function compileRuntimeArtifacts(projectId, { task = "unknown", chapterNo 
   const chapterKey = runtimeChapterKey({ chapterNo, title, task });
   const runtimeDir = `09_运行时/${chapterKey}/run_${stamp}_${slugify(task)}`;
   const contextSummary = await collectRuntimeContext(projectId, contextFiles);
+  const recalledMemory = await recallProjectMemory(projectId, { chapterNo, brief, title, draft, activeFile });
 
   const intent = `# Runtime Intent
 
@@ -2674,6 +3461,7 @@ ${draft ? draft.slice(0, 1200) : "无。"}
 ## 执行目标
 
 - 先读取控制面、长期记忆、档案助手和项目规则。
+- 优先读取 context.json 中的 recalledMemory。重点使用 recalledMemory.ranked.characters、foreshadows、plotThreads、readerPromises、similarChapters 和 styleImitation。
 - 再根据本轮 brief 执行任务。
 - 如果发现设定、人物状态、规则或读者承诺冲突，必须在 trace 中记录。
 `;
@@ -2689,6 +3477,7 @@ ${draft ? draft.slice(0, 1200) : "无。"}
     activeFile: activeFile || "",
     selectedContextFiles: contextFiles || [],
     defaultContextFiles: DEFAULT_CONTEXT_FILES,
+    recalledMemory,
     contextSummary
   };
 
@@ -3143,6 +3932,104 @@ function selectedCategoryPayload(data, categoryId, selected) {
   return ids.includes(`${categoryId}:value`) ? payload : undefined;
 }
 
+function categoryOperation(categoryId) {
+  if (["chapterLog", "emotionLedger", "foreshadows"].includes(categoryId)) return "append-markdown";
+  return "merge-json";
+}
+
+function countJsonTarget(data, categoryId) {
+  if (categoryId === "story_state") {
+    return Object.keys(asObject(data)).length + toArray(data.unresolvedQuestions).length;
+  }
+  if (categoryId === "character_state") return toArray(data.characters).length;
+  if (categoryId === "timeline_state") return toArray(data.timeline).length;
+  if (categoryId === "plot_threads") return toArray(data.threads).length;
+  if (categoryId === "reader_promises") return toArray(data.promises).length;
+  if (categoryId === "world_state") return toArray(data.rules).length + toArray(data.locations).length + toArray(data.organizations).length + toArray(data.constraints).length;
+  if (categoryId === "style_memory") return Object.keys(asObject(data)).length;
+  return Array.isArray(data) ? data.length : Object.keys(asObject(data)).length;
+}
+
+function countPayloadEntries(categoryId, payload) {
+  if (!payload) return 0;
+  if (categoryId === "story_state") {
+    return Object.keys(asObject(payload.storyState)).length + toArray(payload.unresolvedQuestions).length;
+  }
+  if (payload && typeof payload === "object" && !Array.isArray(payload) && (payload.rules || payload.characters || payload.timeline || payload.threads || payload.promises)) {
+    return toArray(payload).length;
+  }
+  if (payload && typeof payload === "object" && !Array.isArray(payload) && categoryId === "style_memory") {
+    return Object.keys(payload).length;
+  }
+  return toArray(payload).length;
+}
+
+async function summarizeSyncTarget(projectId, categoryId, target) {
+  let content = "";
+  try {
+    content = await readProjectFile(projectId, target);
+  } catch {
+    return { exists: false, beforeCount: 0, bytes: 0 };
+  }
+  if (target.endsWith(".json")) {
+    let data = {};
+    try {
+      data = JSON.parse(content);
+    } catch {
+      data = {};
+    }
+    return { exists: true, beforeCount: countJsonTarget(data, categoryId), bytes: Buffer.byteLength(content, "utf8") };
+  }
+  const lines = content.split(/\r?\n/).filter((line) => line.trim());
+  return { exists: true, beforeCount: lines.length, bytes: Buffer.byteLength(content, "utf8") };
+}
+
+function selectedSyncPayloads(data, itemIds = []) {
+  const selected = new Set(itemIds);
+  return SYNC_REVIEW_CATEGORIES
+    .map((category) => {
+      const payload = selectedCategoryPayload(data, category.id, selected);
+      if (!payload) return null;
+      return {
+        id: category.id,
+        label: category.label,
+        target: category.target,
+        payload,
+        operation: categoryOperation(category.id),
+        selectedCount: countPayloadEntries(category.id, payload),
+        summary: compactPayload(payload)
+      };
+    })
+    .filter(Boolean);
+}
+
+async function buildStateSyncDiffPreview(projectId, { runtimeDir, data, itemIds = [] }) {
+  const targets = [];
+  for (const item of selectedSyncPayloads(data, itemIds)) {
+    const before = await summarizeSyncTarget(projectId, item.id, item.target);
+    const afterCount = before.beforeCount + item.selectedCount;
+    targets.push({
+      id: item.id,
+      label: item.label,
+      target: item.target,
+      operation: item.operation,
+      exists: before.exists,
+      beforeCount: before.beforeCount,
+      selectedCount: item.selectedCount,
+      afterCount,
+      delta: afterCount - before.beforeCount,
+      beforeBytes: before.bytes,
+      summary: item.summary
+    });
+  }
+  return {
+    runtimeDir,
+    selectedCount: itemIds.length,
+    targetCount: targets.length,
+    targets
+  };
+}
+
 async function readStateSyncReview(projectId, runtimeDir) {
   const safeRuntimeDir = safeRelativeFile(runtimeDir || "");
   const candidates = [
@@ -3484,11 +4371,12 @@ ${draft || "无。"}
 
 硬性要求：
 1. 不要模仿任何特定作者的原句、签名风格、独创设定或具体桥段。
-2. 正文面向中文网文手机端阅读，段落清楚，对话换人换段。
-3. 人物情绪通过动作、停顿、物件、选择、误会和潜台词表现，不要大量写“他意识到/她终于明白”。
-4. 保留人物的不体面和不完整反应：沉默、嘴硬、答非所问、误判、回避、迁怒。
-5. 每章必须有信息增量、人物压力、具体场景和结尾追读钩子。
-6. 不要用说明书式设定倾倒，不要把所有伏笔一次性解释干净。
+2. 如项目中存在“文风模仿档案”，只模仿其中的高层风格画像：节奏、句式、对话密度、细节偏好和禁用表达；不得照搬样本原句。
+3. 正文面向中文网文手机端阅读，段落清楚，对话换人换段。
+4. 人物情绪通过动作、停顿、物件、选择、误会和潜台词表现，不要大量写“他意识到/她终于明白”。
+5. 保留人物的不体面和不完整反应：沉默、嘴硬、答非所问、误判、回避、迁怒。
+6. 每章必须有信息增量、人物压力、具体场景和结尾追读钩子。
+7. 不要用说明书式设定倾倒，不要把所有伏笔一次性解释干净。
 
 输出格式：
 ${needsProse ? "只输出可直接粘贴进正文文件的章节文本，不要解释创作思路。" : "输出审稿报告，按严重程度列出问题、证据和修改建议。"}
@@ -3795,7 +4683,7 @@ ${root}
 
 ## 当前任务
 
-请按 InkOS 式多阶段流水线执行本章创作：
+请按本项目的多阶段写作流水线执行本章创作：
 
 1. 规划 plan
 2. 编排 orchestrate
@@ -3812,6 +4700,8 @@ ${root}
 - \`${runtimeDir}/context.json\`
 - \`${runtimeDir}/rule-stack.yaml\`
 - \`${runtimeDir}/trace.json\`
+
+其中 \`${runtimeDir}/context.json\` 的 recalledMemory 会提供本轮相关长期记忆和文风模仿档案。请优先使用 recalledMemory.ranked.characters、foreshadows、plotThreads、readerPromises、similarChapters 和 styleImitation；文风只允许模仿高层画像，不得照搬样本原句或特定作者签名风格。
 
 每完成一个阶段，写入对应文件，并更新 \`${runtimeDir}/trace.json\` 的阶段状态。
 
@@ -4094,7 +4984,15 @@ async function routeApi(req, res, url) {
 
     if (req.method === "POST" && parts[3] === "clone") {
       const body = await readBody(req);
-      return sendJson(res, 201, { project: await cloneProject(projectId, body) });
+      const project = await cloneProject(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "maintenance",
+        status: "completed",
+        title: "克隆项目",
+        detail: project.name || project.id || "项目已克隆",
+        files: []
+      });
+      return sendJson(res, 201, { project });
     }
 
     if (req.method === "POST" && parts[3] === "meta") {
@@ -4113,7 +5011,15 @@ async function routeApi(req, res, url) {
       }
       if (req.method === "POST") {
         const body = await readBody(req);
-        return sendJson(res, 200, await saveModelPreset(projectId, body));
+        const result = await saveModelPreset(projectId, body);
+        await recordProjectTask(projectId, {
+          kind: "maintenance",
+          status: "completed",
+          title: "保存模型预设",
+          detail: body.name || "当前模型预设",
+          files: ["05_提示词/model-presets.json"]
+        });
+        return sendJson(res, 200, result);
       }
     }
 
@@ -4135,6 +5041,81 @@ async function routeApi(req, res, url) {
 
     if (req.method === "GET" && parts[3] === "narrative-radar") {
       return sendJson(res, 200, await analyzeNarrativeRadar(projectId, { file: url.searchParams.get("file") || "" }));
+    }
+
+    if (parts[3] === "story-bible") {
+      if (req.method === "GET") {
+        return sendJson(res, 200, await readStoryBible(projectId));
+      }
+      if (req.method === "POST") {
+        const body = await readBody(req);
+        const bible = await saveStoryBibleEntry(projectId, body);
+        await recordProjectTask(projectId, {
+          kind: "maintenance",
+          status: "completed",
+          title: "故事圣经更新",
+          detail: body.section || "story-bible",
+          files: Object.values(bible.sections || {}).map((section) => section.file).filter(Boolean)
+        });
+        return sendJson(res, 200, { ...bible, project: await readProject(projectId) });
+      }
+    }
+
+    if (req.method === "POST" && parts[3] === "memory-recall") {
+      const body = await readBody(req);
+      const recalledMemory = await recallProjectMemory(projectId, {
+        chapterNo: body.chapterNo || "",
+        brief: body.brief || "",
+        title: body.title || "",
+        draft: body.draft || "",
+        activeFile: body.activeFile || ""
+      });
+      return sendJson(res, 200, {
+        chapterNo: body.chapterNo || "",
+        title: body.title || "",
+        recalledMemory
+      });
+    }
+
+    if (parts[3] === "memory-pins") {
+      if (req.method === "GET") {
+        return sendJson(res, 200, await readMemoryPins(projectId));
+      }
+      if (req.method === "POST") {
+        const body = await readBody(req);
+        return sendJson(res, 200, await pinProjectMemory(projectId, body));
+      }
+      if (req.method === "DELETE") {
+        const body = await readBody(req);
+        return sendJson(res, 200, await unpinProjectMemory(projectId, body));
+      }
+    }
+
+    if (parts[3] === "memory-exclusions") {
+      if (req.method === "GET") {
+        return sendJson(res, 200, await readMemoryExclusions(projectId));
+      }
+      if (req.method === "POST") {
+        const body = await readBody(req);
+        return sendJson(res, 200, await excludeProjectMemory(projectId, body));
+      }
+      if (req.method === "DELETE") {
+        const body = await readBody(req);
+        return sendJson(res, 200, await unexcludeProjectMemory(projectId, body));
+      }
+    }
+
+    if (req.method === "POST" && parts[3] === "style-profile") {
+      const body = await readBody(req);
+      const result = await analyzeStyleProfile(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "style",
+        status: "completed",
+        title: "文风模仿档案",
+        detail: result.profileFile,
+        files: [result.profileFile, result.memoryFile, result.sampleFile]
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }
 
     if (parts[3] === "snapshots") {
@@ -4214,6 +5195,34 @@ async function routeApi(req, res, url) {
         const review = await readStateSyncReview(projectId, runtimeDir);
         return sendJson(res, 200, review);
       }
+      if (req.method === "POST" && parts[4] === "preview") {
+        const body = await readBody(req);
+        const runtimeDir = safeRelativeFile(body.runtimeDir || "");
+        const review = await readStateSyncReview(projectId, runtimeDir);
+        const itemIds = Array.isArray(body.itemIds) ? body.itemIds.filter(Boolean) : [];
+        if (!itemIds.length) {
+          const err = new Error("请至少选择一项要预览的同步内容");
+          err.status = 400;
+          throw err;
+        }
+        const validIds = new Set(
+          review.items
+            .filter((item) => item.available)
+            .flatMap((item) => [item.id, ...(item.entries || []).map((entry) => entry.id)])
+        );
+        const selected = itemIds.filter((id) => validIds.has(id));
+        if (!selected.length) {
+          const err = new Error("所选同步项没有可预览内容");
+          err.status = 400;
+          throw err;
+        }
+        const preview = await buildStateSyncDiffPreview(projectId, {
+          runtimeDir,
+          data: review.raw,
+          itemIds: selected
+        });
+        return sendJson(res, 200, { preview });
+      }
       if (req.method === "POST" && parts[4] === "apply") {
         const body = await readBody(req);
         const runtimeDir = safeRelativeFile(body.runtimeDir || "");
@@ -4254,15 +5263,36 @@ async function routeApi(req, res, url) {
       const meta = JSON.parse(await fs.readFile(projectPath(projectId, "project.json"), "utf8"));
       if (parts[4] === "ai") {
         const result = await runAiQualityReview(projectId, body, meta);
+        await recordProjectTask(projectId, {
+          kind: "quality",
+          status: result.status || (result.mode === "codex" ? "running" : "completed"),
+          title: "AI 深度质检",
+          detail: result.reportFile || result.localReportFile || "AI 深度质检",
+          files: [result.reportFile, result.localReportFile].filter(Boolean)
+        });
         return sendJson(res, result.mode === "codex" ? 202 : 200, { ...result, project: await readProject(projectId) });
       }
       const result = await runPublishQualityCheck(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "quality",
+        status: "completed",
+        title: "发布前质检",
+        detail: result.reportFile,
+        files: [result.reportFile]
+      });
       return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }
 
     if (req.method === "POST" && parts[3] === "revision-task") {
       const body = await readBody(req);
       const result = await createRevisionTask(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "revision",
+        status: "ready",
+        title: "修订任务单",
+        detail: result.taskFile,
+        files: [result.taskFile, result.reportFile].filter(Boolean)
+      });
       return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }
 
@@ -4270,6 +5300,14 @@ async function routeApi(req, res, url) {
       const body = await readBody(req);
       const meta = JSON.parse(await fs.readFile(projectPath(projectId, "project.json"), "utf8"));
       const result = await runRevisionTask(projectId, body, meta);
+      await recordProjectTask(projectId, {
+        kind: "revision",
+        status: result.status || (result.mode === "codex" ? "running" : "completed"),
+        title: result.mode === "codex" ? "Codex 修订任务" : "修订稿",
+        detail: result.revisionFile || result.runtimeDir || result.taskFile,
+        runtimeDir: result.runtimeDir,
+        files: [result.taskFile, result.revisionFile, result.targetFile].filter(Boolean)
+      });
       return sendJson(res, result.mode === "codex" ? 202 : 200, { ...result, project: await readProject(projectId) });
     }
 
@@ -4288,20 +5326,59 @@ async function routeApi(req, res, url) {
       }
     }
 
+    if (parts[3] === "conflicts" && req.method === "POST" && parts[4] === "repair-plan") {
+      const body = await readBody(req);
+      return sendJson(res, 200, await createConflictRepairPlan(projectId, body.conflict || body));
+    }
+
+    if (parts[3] === "conflicts" && req.method === "POST" && parts[4] === "apply") {
+      const body = await readBody(req);
+      const result = await applyConflictRepair(projectId, body.conflict || body);
+      await recordProjectTask(projectId, {
+        kind: "conflict",
+        status: "completed",
+        title: "记忆冲突修复",
+        detail: result.reportFile,
+        files: [result.reportFile, ...result.plan.targetFiles]
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
     if (req.method === "POST" && parts[3] === "conflicts") {
       const result = await analyzeMemoryConflicts(projectId);
+      await recordProjectTask(projectId, {
+        kind: "conflict",
+        status: "completed",
+        title: "记忆冲突看板",
+        detail: result.reportFile,
+        files: [result.reportFile]
+      });
       return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }
 
     if (req.method === "POST" && parts[3] === "publish-materials") {
       const body = await readBody(req);
       const result = await generatePublishMaterials(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "publish",
+        status: "completed",
+        title: "发布资料包",
+        detail: result.file,
+        files: [result.file]
+      });
       return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }
 
     if (req.method === "POST" && parts[3] === "batch") {
       const body = await readBody(req);
       const result = await runBatchOperation(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "quality",
+        status: "completed",
+        title: "批量质检",
+        detail: result.file,
+        files: [result.file]
+      });
       return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }
 
@@ -4352,11 +5429,28 @@ async function routeApi(req, res, url) {
           runtimeDir: runtime.runtimeDir
         });
         const run = await runCodexForProject(projectId, content);
+        await recordProjectTask(projectId, {
+          id: `codex:${run.runId}`,
+          kind: "pipeline",
+          status: "running",
+          title: "Codex 多阶段流水线",
+          detail: runtime.runtimeDir,
+          runtimeDir: runtime.runtimeDir,
+          files: [run.finalFile, run.logFile, run.statusFile, `${runtime.runtimeDir}/trace.json`].filter(Boolean)
+        });
         return sendJson(res, 202, { mode: "codex", run, runtime });
       }
 
       const result = await runModelPipeline(projectId, body, meta, runtime);
       await updateProjectMeta(projectId, { model: body.model || meta.model, endpoint: body.endpoint || meta.endpoint });
+      await recordProjectTask(projectId, {
+        kind: "pipeline",
+        status: "completed",
+        title: "本地模型多阶段流水线",
+        detail: result.chapterFile || result.runtimeDir,
+        runtimeDir: result.runtimeDir,
+        files: [result.chapterFile, result.finalFile, `${result.runtimeDir}/trace.json`].filter(Boolean)
+      });
       return sendJson(res, 200, { mode: "model", ...result });
     }
 
@@ -4387,6 +5481,14 @@ async function routeApi(req, res, url) {
         premise: body.idea || meta.premise,
         genre: body.genre || meta.genre
       });
+      await recordProjectTask(projectId, {
+        kind: "idea",
+        status: "completed",
+        title: "创意孵化",
+        detail: "00_总控/立项建议.md",
+        runtimeDir: runtime.runtimeDir,
+        files: ["00_总控/立项建议.md", `${runtime.runtimeDir}/trace.json`]
+      });
       return sendJson(res, 200, { output, file: "00_总控/立项建议.md", prompt, runtime });
     }
 
@@ -4412,6 +5514,14 @@ async function routeApi(req, res, url) {
           reportFile
         });
         const run = await runCodexForProject(projectId, content);
+        await recordProjectTask(projectId, {
+          id: `codex:${run.runId}`,
+          kind: "knowledge",
+          status: "running",
+          title: "Codex 资料投喂",
+          detail: reportFile,
+          files: [reportFile, run.finalFile, run.logFile, ...saved.map((item) => item.file)].filter(Boolean)
+        });
         return sendJson(res, 202, {
           mode: "codex",
           run,
@@ -4446,6 +5556,13 @@ async function routeApi(req, res, url) {
       await writeProjectFile(projectId, "05_提示词/多角色协作.md", `# 多角色协作\n\n${extractMarkdownSection(result, "多角色协作")}\n`);
       await writeProjectFile(projectId, "05_提示词/SKILL.md", `# 本项目写作 Skill\n\n${extractMarkdownSection(result, "本项目写作 Skill")}\n`);
       await updateProjectMeta(projectId, { model: body.model || meta.model, endpoint: body.endpoint || meta.endpoint });
+      await recordProjectTask(projectId, {
+        kind: "knowledge",
+        status: "completed",
+        title: "资料投喂",
+        detail: reportFile,
+        files: [reportFile, "05_提示词/项目能力包.md", "05_提示词/项目工作流.md", "05_提示词/多角色协作.md", "05_提示词/SKILL.md"]
+      });
       return sendJson(res, 200, {
         mode: "model",
         output: result,
@@ -4476,6 +5593,14 @@ async function routeApi(req, res, url) {
         runtimeDir: runtime.runtimeDir
       });
       await writeProjectFile(projectId, "07_Codex/Codex任务单.md", content);
+      await recordProjectTask(projectId, {
+        kind: "codex",
+        status: "ready",
+        title: "Codex 任务单",
+        detail: "07_Codex/Codex任务单.md",
+        runtimeDir: runtime.runtimeDir,
+        files: ["07_Codex/Codex任务单.md", `${runtime.runtimeDir}/trace.json`]
+      });
       return sendJson(res, 200, { file: "07_Codex/Codex任务单.md", content, runtime });
     }
 
@@ -4509,6 +5634,15 @@ async function routeApi(req, res, url) {
               runtimeDir: runtime.runtimeDir
             });
       const run = await runCodexForProject(projectId, content);
+      await recordProjectTask(projectId, {
+        id: `codex:${run.runId}`,
+        kind: body.mode === "idea" ? "idea" : "codex",
+        status: "running",
+        title: body.mode === "idea" ? "Codex 创意孵化" : "Codex 直连任务",
+        detail: run.finalFile || run.logFile,
+        runtimeDir: runtime.runtimeDir,
+        files: [run.finalFile, run.logFile, run.statusFile, `${runtime.runtimeDir}/trace.json`].filter(Boolean)
+      });
       return sendJson(res, 202, { run, runtime });
     }
 
@@ -4525,7 +5659,15 @@ async function routeApi(req, res, url) {
 
     if (req.method === "POST" && parts[3] === "export") {
       const body = await readBody(req);
-      return sendJson(res, 200, await exportProject(projectId, body));
+      const result = await exportProject(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "export",
+        status: "completed",
+        title: "导出发布稿",
+        detail: result.file,
+        files: [result.file]
+      });
+      return sendJson(res, 200, result);
     }
   }
 

@@ -1,7 +1,7 @@
 {
   "name": "local-novel-studio",
   "productName": "本地小说工坊",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "本地化 AI 小说创作工作台",
   "author": "",
   "private": true,
@@ -32,12 +32,16 @@
       "server.mjs",
       "package.json",
       "README.md",
-      "使用教程.md"
+      "使用教程.md",
+      "ROADMAP.md",
+      "CURRENT_ITERATION.md",
+      "项目审阅报告.md"
     ],
     "extraMetadata": {
       "main": "electron/main.mjs"
     },
     "win": {
+      "icon": "public/icons/app-icon.ico",
       "signAndEditExecutable": false,
       "target": [
         {

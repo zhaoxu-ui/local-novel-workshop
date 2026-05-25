@@ -4,12 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>本地小说工坊</title>
+    <link rel="icon" href="/icons/open-book.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <main class="app-shell">
       <aside class="sidebar">
         <div class="brand">
+          <img class="brand-icon" src="/icons/open-book.svg" alt="" aria-hidden="true" />
           <div>
             <h1>本地小说工坊</h1>
             <p>资料库 · 正文 · 审稿 · 发布</p>
@@ -160,13 +162,15 @@
 
           <aside class="toolbox">
             <div class="toolbox-tabs" id="toolboxTabs" aria-label="工具分组">
-              <button data-toolbox-group="all" class="active">全部</button>
-              <button data-toolbox-group="write">写作</button>
-              <button data-toolbox-group="project">项目</button>
-              <button data-toolbox-group="quality">质检</button>
-              <button data-toolbox-group="revision">修订</button>
-              <button data-toolbox-group="publish">发布</button>
-              <button data-toolbox-group="system">系统</button>
+              <button data-toolbox-group="write" class="active">写作流程</button>
+              <button id="toggleMoreTools" class="more-tools-button" type="button" aria-expanded="false">更多工具</button>
+              <div id="moreToolMenu" class="more-tool-menu" hidden>
+                <button data-toolbox-group="project">项目设置</button>
+                <button data-toolbox-group="quality">质量与记忆</button>
+                <button data-toolbox-group="revision">修订版本</button>
+                <button data-toolbox-group="publish">发布准备</button>
+                <button data-toolbox-group="system">系统维护</button>
+              </div>
             </div>
 
             <section class="panel compact-panel" data-tool-group="project" data-tool-panel="project-status">
@@ -196,10 +200,10 @@
             <section class="panel compact-panel" data-tool-group="write project system" data-tool-panel="task-center">
               <h2>AI 任务中心</h2>
               <button id="refreshTaskCenter">刷新任务</button>
-              <div id="taskCenterPanel" class="task-center muted">选择项目后显示 Codex、流水线、修订和质检任务</div>
+              <div id="taskCenterPanel" class="task-center muted">选择项目后显示 Codex 运行历史、流水线、修订和质检任务</div>
             </section>
 
-            <section class="panel compact-panel" data-tool-group="write project quality" data-tool-panel="narrative-radar">
+            <section class="panel compact-panel" data-tool-group="project quality" data-tool-panel="narrative-radar">
               <h2>创作雷达</h2>
               <button id="runNarrativeRadar" class="primary">扫描当前项目</button>
               <div id="narrativeRadarPanel" class="narrative-radar muted">基于本地题材规则、套路检测和去 AI 腔规则，选择项目后可本地扫描。</div>
@@ -229,8 +233,8 @@
               <div id="qualityPanel" class="quality-panel muted">选择项目后运行质检</div>
             </section>
 
-            <section class="panel compact-panel" data-tool-group="revision publish" data-tool-panel="workflow">
-              <h2>生产闭环</h2>
+            <section class="panel compact-panel" data-tool-group="revision publish" data-tool-panel="revision-publish">
+              <h2>修订发布</h2>
               <label>
                 修订补充要求
                 <textarea id="revisionNote" rows="3" placeholder="例如：保留结尾悬念，加强主角动机，不改核心设定"></textarea>
@@ -254,9 +258,15 @@
                 <input id="publishPlatform" placeholder="通用 / 番茄 / 起点 / 七猫" />
               </label>
               <button id="generatePublishMaterials">生成发布资料包</button>
+              <div id="workflowPanel" class="workflow-panel muted">选择项目后显示修订发布结果</div>
+            </section>
+
+            <section class="panel compact-panel" data-tool-group="project system" data-tool-panel="project-maintenance">
+              <h2>项目维护</h2>
+              <div class="hint">低频操作集中在这里，避免和日常写作、修订发布混在一起。</div>
               <button id="saveModelPreset">保存当前模型预设</button>
               <button id="cloneProject">克隆当前项目</button>
-              <div id="workflowPanel" class="workflow-panel muted">选择项目后显示生产闭环结果</div>
+              <div id="maintenancePanel" class="workflow-panel muted">选择项目后显示维护结果</div>
             </section>
 
             <section class="panel compact-panel" data-tool-group="revision" data-tool-panel="versions">
@@ -265,7 +275,7 @@
               <div id="versionPanel" class="version-panel muted">暂无历史版本</div>
             </section>
 
-            <section class="panel compact-panel" data-tool-group="project write" data-tool-panel="archive-assistant">
+            <section class="panel compact-panel" data-tool-group="project" data-tool-panel="archive-assistant">
               <h2>档案助手</h2>
               <label>
                 当前助手
@@ -274,6 +284,38 @@
               <div id="archiveAssistantHint" class="hint">创建或选择项目后显示助手说明。</div>
               <button id="saveArchiveAssistant">应用到当前项目</button>
               <button id="openArchiveAssistant">打开助手档案</button>
+            </section>
+
+            <section class="panel compact-panel" data-tool-group="project quality" data-tool-panel="story-bible">
+              <h2>故事圣经</h2>
+              <label>
+                分区
+                <select id="storyBibleSection">
+                  <option value="characters">人物</option>
+                  <option value="plotThreads">剧情线</option>
+                  <option value="readerPromises">读者承诺</option>
+                  <option value="worldRules">世界规则</option>
+                </select>
+              </label>
+              <label>
+                ID
+                <input id="storyBibleId" placeholder="例如：lin-lan / door-rule" />
+              </label>
+              <label>
+                名称
+                <input id="storyBibleName" placeholder="人物名、剧情线、承诺或规则名" />
+              </label>
+              <label>
+                状态
+                <input id="storyBibleStatus" placeholder="open / active / 已确认 / 待回收" />
+              </label>
+              <label>
+                摘要
+                <textarea id="storyBibleSummary" rows="3" placeholder="这条记忆当前最重要的信息"></textarea>
+              </label>
+              <button id="saveStoryBibleEntry" class="primary">保存故事圣经条目</button>
+              <button id="refreshStoryBible">刷新故事圣经</button>
+              <div id="storyBiblePanel" class="story-bible muted">选择项目后显示长期记忆条目</div>
             </section>
 
             <section class="panel compact-panel" data-tool-group="project system" data-tool-panel="knowledge">
@@ -290,16 +332,32 @@
               <div class="hint">读取“AI 执行配置”的默认执行方式。原始资料会保存到项目里，AI 会先判断、去重和筛选，再更新项目能力包。</div>
             </section>
 
-            <section class="panel grow" data-tool-group="revision quality" data-tool-panel="sync-review">
+            <section class="panel compact-panel" data-tool-group="project quality" data-tool-panel="style-lab">
+              <h2>文风模仿</h2>
+              <label>
+                作者样本 / 本项目样稿
+                <textarea id="styleSample" rows="5" placeholder="粘贴你自己的样稿，或本项目已确认的正文片段。系统只提取节奏、句式、对话密度和细节偏好，不照搬原句。"></textarea>
+              </label>
+              <label>
+                样本备注
+                <input id="styleNote" placeholder="例如：第一卷悬疑压迫感、主角 POV、日常口语感" />
+              </label>
+              <button id="analyzeStyleProfile" class="primary">生成文风模仿档案</button>
+              <div id="styleProfilePanel" class="workflow-panel muted">选择项目后可生成文风模仿档案</div>
+            </section>
+
+            <section class="panel compact-panel" data-tool-group="project quality" data-tool-panel="memory-recall">
+              <h2>召回调试</h2>
+              <button id="previewMemoryRecall" class="primary">预览本章召回</button>
+              <div class="hint">按当前章节号、标题、brief 和正文草稿预览 AI 写作前会读取的人物、伏笔、承诺、剧情线和文风档案；可把关键条目钉为本章必读。</div>
+              <div id="memoryRecallPanel" class="memory-recall muted">选择项目后可预览本章召回</div>
+            </section>
+
+            <section class="panel grow" data-tool-group="write revision quality" data-tool-panel="sync-review">
               <h2>状态同步审核</h2>
               <div id="pipelineFlow" class="pipeline-flow muted">暂无流程图</div>
               <div id="runDetailPanel" class="run-detail muted">暂无运行详情</div>
               <div id="syncReviewPanel" class="sync-review muted">暂无同步记录</div>
-            </section>
-
-            <section class="panel grow" data-tool-group="system" data-tool-panel="run-history">
-              <h2>运行历史</h2>
-              <div id="runHistory" class="run-history muted">暂无运行记录</div>
             </section>
 
             <section class="panel grow" data-tool-group="project publish system" data-tool-panel="project-files">
@@ -313,7 +371,7 @@
               <button id="runDoctor">重新诊断</button>
             </section>
 
-            <section class="panel grow" data-tool-group="write project system" data-tool-panel="context-files">
+            <section class="panel grow" data-tool-group="project system" data-tool-panel="context-files">
               <h2>资料文件</h2>
               <div class="hint">勾选会额外加入提示词上下文。核心总纲、章节日志、情绪账本和伏笔表会默认读取。</div>
               <div id="contextFiles" class="file-checks"></div>

@@ -68,6 +68,151 @@ try {
     method: "POST",
     body: JSON.stringify({ name: "回归测试预设", runner: "codex" })
   });
+  const styleProfile = await api(`/api/projects/${encodeURIComponent(id)}/style-profile`, {
+    method: "POST",
+    body: JSON.stringify({
+      sample: "雨停以后，巷子反而更暗。林岚没急着说话，只把钥匙在指间转了一圈。门里的人笑得很轻，像怕惊醒什么。她忽然觉得，今晚不能再问第二遍。",
+      note: "回归测试文风样本"
+    })
+  });
+  const projectDir = path.join(process.env.PROJECTS_DIR, id);
+  await fs.writeFile(path.join(projectDir, "04_连续性", "character_state.json"), JSON.stringify({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    characters: [
+      { id: "lin-lan", name: "林岚", goal: "查清门后的笑声", emotionalState: "警惕但强装镇定", currentLocation: "旧屋门口", secrets: ["钥匙来自母亲"] },
+      { id: "lin-lan-copy", name: "林岚", goal: "重复记录，用于冲突修复测试", emotionalState: "重复状态", currentLocation: "旧屋门口" },
+      { id: "red-herring", name: "假线索人物", goal: "用钥匙和门后笑声误导林岚", emotionalState: "刻意制造噪音", currentLocation: "旧屋门口" },
+      { id: "neighbor", name: "邻居", goal: "避开旧屋", emotionalState: "恐惧", currentLocation: "楼下" }
+    ]
+  }, null, 2), "utf8");
+  await fs.writeFile(path.join(projectDir, "04_连续性", "plot_threads.json"), JSON.stringify({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    threads: [
+      { id: "door-laugh", thread: "门后的笑声", status: "open", related: ["林岚", "钥匙", "旧屋"], next: "确认门内是谁" },
+      { id: "rain-case", thread: "雨夜旧案", status: "open", related: ["母亲", "旧案"], next: "寻找档案" }
+    ]
+  }, null, 2), "utf8");
+  await fs.writeFile(path.join(projectDir, "04_连续性", "reader_promises.json"), JSON.stringify({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    promises: [
+      { id: "who-behind-door", promise: "门后的人是谁", status: "open", related: ["门后", "笑声", "林岚"], payoffPlan: "下一章给出误导性线索" }
+    ]
+  }, null, 2), "utf8");
+  await fs.writeFile(path.join(projectDir, "04_连续性", "world_state.json"), JSON.stringify({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    rules: [
+      { id: "door-rule", rule: "不存在的门只会在雨停后出现", status: "active" }
+    ]
+  }, null, 2), "utf8");
+  const storyBible = await api(`/api/projects/${encodeURIComponent(id)}/story-bible`);
+  if (!storyBible.sections?.characters?.items?.some((item) => item.id === "lin-lan")) {
+    throw new Error("故事圣经未读取人物状态");
+  }
+  const updatedBible = await api(`/api/projects/${encodeURIComponent(id)}/story-bible`, {
+    method: "POST",
+    body: JSON.stringify({
+      section: "characters",
+      item: {
+        id: "lin-lan",
+        name: "林岚",
+        status: "主动试探",
+        summary: "确认钥匙异常后不再等待别人解释",
+        note: "故事圣经回归测试更新"
+      }
+    })
+  });
+  if (!updatedBible.sections?.characters?.items?.some((item) => item.id === "lin-lan" && item.summary.includes("钥匙异常"))) {
+    throw new Error("故事圣经未更新人物条目");
+  }
+  const updatedWorldBible = await api(`/api/projects/${encodeURIComponent(id)}/story-bible`, {
+    method: "POST",
+    body: JSON.stringify({
+      section: "worldRules",
+      item: {
+        id: "sound-rule",
+        name: "笑声规则",
+        status: "active",
+        summary: "门后笑声只回应持钥匙的人"
+      }
+    })
+  });
+  if (!updatedWorldBible.sections?.worldRules?.items?.some((item) => item.id === "sound-rule")) {
+    throw new Error("故事圣经未更新世界规则");
+  }
+  const conflictReview = await api(`/api/projects/${encodeURIComponent(id)}/conflicts`, { method: "POST", body: JSON.stringify({}) });
+  const duplicateCharacterConflict = conflictReview.conflicts?.find((item) => item.type === "人物状态重复" && item.key === "林岚");
+  if (!duplicateCharacterConflict) {
+    throw new Error("记忆冲突看板未识别重复人物状态");
+  }
+  const repairPlan = await api(`/api/projects/${encodeURIComponent(id)}/conflicts/repair-plan`, {
+    method: "POST",
+    body: JSON.stringify({ conflict: duplicateCharacterConflict })
+  });
+  if (!repairPlan.plan?.actions?.some((item) => item.action === "dedupe-character-state" && item.key === "林岚")) {
+    throw new Error("记忆冲突修复方案未包含人物状态去重动作");
+  }
+  const repairApplied = await api(`/api/projects/${encodeURIComponent(id)}/conflicts/apply`, {
+    method: "POST",
+    body: JSON.stringify({ conflict: duplicateCharacterConflict })
+  });
+  if (!repairApplied.applied || !repairApplied.reportFile) {
+    throw new Error("记忆冲突修复未应用");
+  }
+  const repairedCharacterState = JSON.parse(await fs.readFile(path.join(projectDir, "04_连续性", "character_state.json"), "utf8"));
+  if (repairedCharacterState.characters.filter((item) => item.name === "林岚").length !== 1) {
+    throw new Error("记忆冲突修复后仍存在重复人物状态");
+  }
+  await fs.writeFile(path.join(projectDir, "04_连续性", "伏笔回收表.md"), [
+    "# 伏笔回收表",
+    "",
+    "| id | 伏笔 | 状态 | 相关 | 回收计划 |",
+    "| --- | --- | --- | --- | --- |",
+    "| key-001 | 林岚的钥匙能打开旧屋里不存在的门 | 未回收 | 林岚、钥匙、门后 | 第 2 章让钥匙第一次失效 |"
+  ].join("\n"), "utf8");
+  const pinnedMemory = await api(`/api/projects/${encodeURIComponent(id)}/memory-pins`, {
+    method: "POST",
+    body: JSON.stringify({
+      chapterNo: 2,
+      title: "风格测试",
+      item: {
+        type: "foreshadows",
+        id: "key-001",
+        label: "林岚钥匙伏笔",
+        text: "林岚的钥匙能打开旧屋里不存在的门，本章必须保留这个异常。"
+      }
+    })
+  });
+  if (!pinnedMemory.pins?.some((item) => item.id === "key-001" && item.type === "foreshadows")) {
+    throw new Error("记忆钉选接口未保存本章必读记忆");
+  }
+  const excludedMemory = await api(`/api/projects/${encodeURIComponent(id)}/memory-exclusions`, {
+    method: "POST",
+    body: JSON.stringify({
+      chapterNo: 2,
+      title: "风格测试",
+      item: {
+        type: "characters",
+        id: "red-herring",
+        label: "假线索人物",
+        text: "假线索人物会用钥匙和门后笑声误导林岚，本章不要召回。"
+      }
+    })
+  });
+  if (!excludedMemory.exclusions?.some((item) => item.id === "red-herring" && item.type === "characters")) {
+    throw new Error("记忆排除接口未保存本章禁用记忆");
+  }
+  const codexTask = await api(`/api/projects/${encodeURIComponent(id)}/codex`, {
+    method: "POST",
+    body: JSON.stringify({ task: "请根据当前项目风格写一段测试任务单。", chapterNo: 2, title: "风格测试", brief: "林岚拿着钥匙靠近门后笑声，需要召回文风模仿档案、人物状态、伏笔和读者承诺。" })
+  });
+  const recallPreview = await api(`/api/projects/${encodeURIComponent(id)}/memory-recall`, {
+    method: "POST",
+    body: JSON.stringify({ chapterNo: 2, title: "风格测试", brief: "林岚拿着钥匙靠近门后笑声。" })
+  });
   const search = await api(`/api/projects/${encodeURIComponent(id)}/search?q=${encodeURIComponent("钥匙")}`);
   const tasks = await api(`/api/projects/${encodeURIComponent(id)}/tasks`);
   const radar = await api(`/api/projects/${encodeURIComponent(id)}/narrative-radar`);
@@ -79,6 +224,7 @@ try {
     batch.file,
     exported.file,
     conflicts.reportFile,
+    styleProfile.profileFile,
     "05_提示词/model-presets.json"
   ];
   const project = await api(`/api/projects/${encodeURIComponent(id)}`);
@@ -90,6 +236,95 @@ try {
   }
   if (!tasks.tasks?.some((item) => item.kind === "revision" && item.files?.includes(revisionTask.taskFile))) {
     throw new Error("任务中心未返回修订任务单");
+  }
+  const taskIndexPath = path.join(projectDir, "09_运行时", "tasks.json");
+  const taskIndex = JSON.parse(await fs.readFile(taskIndexPath, "utf8"));
+  if (!Array.isArray(taskIndex.tasks) || taskIndex.tasks.length < 4) {
+    throw new Error("统一任务索引未记录核心任务");
+  }
+  if (!tasks.tasks?.some((item) => item.source === "task-index" && item.kind === "quality")) {
+    throw new Error("任务中心未优先返回统一任务索引记录");
+  }
+  const styleMemory = JSON.parse(await fs.readFile(path.join(projectDir, "04_连续性", "style_memory.json"), "utf8"));
+  if (!styleMemory.imitationProfile?.rhythm || !styleMemory.imitationProfile?.guardrails?.length) {
+    throw new Error("文风模仿档案未写入风格记忆");
+  }
+  const runtimeContext = JSON.parse(await fs.readFile(path.join(projectDir, ...codexTask.runtime.runtimeDir.split("/"), "context.json"), "utf8"));
+  if (!runtimeContext.recalledMemory?.styleImitation?.profileFile || !runtimeContext.recalledMemory?.relevant?.length) {
+    throw new Error("运行时上下文未召回文风模仿和长期记忆");
+  }
+  if (!runtimeContext.recalledMemory?.pinned?.some((item) => item.id === "key-001" && item.text.includes("不存在的门"))) {
+    throw new Error("运行时上下文未带入本章手动钉选记忆");
+  }
+  if (!runtimeContext.recalledMemory?.excluded?.some((item) => item.id === "red-herring")) {
+    throw new Error("运行时上下文未记录本章手动排除记忆");
+  }
+  const ranked = runtimeContext.recalledMemory?.ranked || {};
+  if (ranked.characters?.some((item) => item.id === "red-herring" || item.name === "假线索人物")) {
+    throw new Error("运行时上下文仍召回了本章手动排除的人物记忆");
+  }
+  if (ranked.characters?.[0]?.name !== "林岚") {
+    throw new Error("长期记忆未优先召回相关人物状态");
+  }
+  if (!ranked.foreshadows?.[0]?.text?.includes("钥匙")) {
+    throw new Error("长期记忆未优先召回相关伏笔");
+  }
+  if (!ranked.readerPromises?.[0]?.text?.includes("门后")) {
+    throw new Error("长期记忆未优先召回读者承诺");
+  }
+  if (!ranked.plotThreads?.[0]?.text?.includes("门后的笑声")) {
+    throw new Error("长期记忆未优先召回剧情线程");
+  }
+  if (recallPreview.recalledMemory?.ranked?.characters?.[0]?.name !== "林岚" || !recallPreview.recalledMemory?.ranked?.foreshadows?.[0]?.text?.includes("钥匙")) {
+    throw new Error("召回调试接口未返回本章相关记忆");
+  }
+  if (!recallPreview.recalledMemory?.pinned?.some((item) => item.id === "key-001")) {
+    throw new Error("召回调试接口未返回本章手动钉选记忆");
+  }
+  if (!recallPreview.recalledMemory?.excluded?.some((item) => item.id === "red-herring")) {
+    throw new Error("召回调试接口未返回本章手动排除记忆");
+  }
+  if (recallPreview.recalledMemory?.ranked?.characters?.some((item) => item.id === "red-herring" || item.name === "假线索人物")) {
+    throw new Error("召回调试接口仍返回了本章手动排除的人物记忆");
+  }
+  const stateSyncFile = path.join(projectDir, ...codexTask.runtime.runtimeDir.split("/"), "state-sync.md");
+  await fs.writeFile(stateSyncFile, [
+    "# state sync",
+    "",
+    "```json",
+    JSON.stringify({
+      chapterLog: {
+        chapter: "第2章",
+        event: "林岚确认钥匙异常",
+        newInfo: "钥匙能触发不存在的门",
+        characterChange: "林岚从警惕转向主动试探",
+        nextHook: "门后笑声再次出现"
+      },
+      characterUpdates: [
+        { id: "lin-lan", name: "林岚", emotionalState: "主动试探", currentLocation: "旧屋门口" }
+      ],
+      readerPromises: [
+        { id: "key-door-payoff", promise: "钥匙为什么能打开不存在的门", status: "open" }
+      ]
+    }, null, 2),
+    "```"
+  ].join("\n"), "utf8");
+  const syncReview = await api(`/api/projects/${encodeURIComponent(id)}/sync-review?runtimeDir=${encodeURIComponent(codexTask.runtime.runtimeDir)}`);
+  const syncItemIds = syncReview.items
+    .filter((item) => ["chapterLog", "character_state", "reader_promises"].includes(item.id))
+    .flatMap((item) => item.entries.map((entry) => entry.id));
+  const syncPreview = await api(`/api/projects/${encodeURIComponent(id)}/sync-review/preview`, {
+    method: "POST",
+    body: JSON.stringify({ runtimeDir: codexTask.runtime.runtimeDir, itemIds: syncItemIds })
+  });
+  if (!syncPreview.preview?.targets?.some((item) => item.target === "04_连续性/character_state.json" && item.operation === "merge-json")) {
+    throw new Error("状态同步差异预览未显示人物状态 JSON 合并目标");
+  }
+  if (!syncPreview.preview?.targets?.some((item) => item.target === "04_连续性/章节日志.md" && item.operation === "append-markdown")) {
+    throw new Error("状态同步差异预览未显示章节日志追加目标");
+  }
+  if (!syncPreview.preview?.targets?.every((item) => typeof item.beforeCount === "number" && typeof item.afterCount === "number")) {
+    throw new Error("状态同步差异预览缺少写入前后数量");
   }
   if (!radar.scores?.publishReadiness || !Array.isArray(radar.issues)) {
     throw new Error("创作雷达未返回评分和问题列表");
