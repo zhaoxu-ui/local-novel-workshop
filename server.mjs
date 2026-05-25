@@ -2292,6 +2292,65 @@ function taskStatusLabelForReport(status) {
   }[status] || status || "未知";
 }
 
+function analyzeProseQuality(text = "") {
+  const normalized = String(text || "").trim();
+  const chars = normalized.replace(/\s/g, "").length;
+  const paragraphs = normalized.split(/\n{2,}/).map((item) => item.trim()).filter(Boolean);
+  const aiTerms = ["与此同时", "下一秒", "很快", "显然", "事实上", "不由得", "仿佛", "一种", "某种", "命运"];
+  const hookTerms = ["？", "!", "！", "谁", "为什么", "门", "钥匙", "秘密", "真相", "声音"];
+  const emotionTerms = ["怕", "冷", "疼", "笑", "哭", "怒", "慌", "沉默", "呼吸", "手心"];
+  const dialogueLines = normalized.split(/\n/).filter((line) => /[“"].+[”"]/.test(line));
+  const aiHits = aiTerms.map((term) => ({ term, count: (normalized.match(new RegExp(term, "g")) || []).length })).filter((item) => item.count);
+  const hookScore = Math.min(100, hookTerms.reduce((score, term) => score + (normalized.includes(term) ? 9 : 0), 20));
+  const emotionScore = Math.min(100, emotionTerms.reduce((score, term) => score + (normalized.includes(term) ? 8 : 0), 18));
+  const dialogueRatio = paragraphs.length ? Math.round(dialogueLines.length / paragraphs.length * 100) : 0;
+  const aiPenalty = aiHits.reduce((sum, item) => sum + item.count, 0) * 6;
+  const humanScore = Math.max(0, Math.min(100, 86 - aiPenalty + Math.min(12, dialogueRatio / 3)));
+  const voiceIssues = [];
+  if (dialogueLines.length >= 2 && new Set(dialogueLines.map((line) => line.replace(/[“”"]/g, "").slice(0, 4))).size <= 1) {
+    voiceIssues.push("多句对白起手过近，人物口吻可能发平。");
+  }
+  if (dialogueRatio < 8 && chars > 1200) voiceIssues.push("对白占比偏低，人物声音不够显性。");
+  const suggestions = [];
+  if (aiHits.length) suggestions.push("替换高频 AI 腔连接词，用具体动作、感官和场景因果承接。");
+  if (hookScore < 60) suggestions.push("章尾补一个未解问题、反常细节或选择压力。");
+  if (emotionScore < 60) suggestions.push("把情绪落到身体反应、停顿、错误判断和具体物件上。");
+  if (voiceIssues.length) suggestions.push("给核心人物建立口头禅、句长、回避方式和情绪泄露点。");
+  return { chars, paragraphCount: paragraphs.length, dialogueLines: dialogueLines.length, dialogueRatio, scores: { humanScore, hookScore, emotionScore, voiceConsistency: Math.max(0, 100 - voiceIssues.length * 22) }, aiHits, voiceIssues, suggestions };
+}
+
+async function generateProseQualityReport(projectId, { file = "", text = "" } = {}) {
+  const targetFile = file || (await latestProjectFile(projectId, "01_正文/第")) || "";
+  const sourceText = text || (targetFile ? await readProjectFile(projectId, targetFile).catch(() => "") : "");
+  const analysis = analyzeProseQuality(sourceText);
+  const reportFile = `06_发布/文稿质量增强_${timestampId()}.md`;
+  await writeProjectFile(projectId, reportFile, `# 文稿质量增强报告
+
+生成时间：${new Date().toISOString()}
+目标文件：${targetFile || "手动文本"}
+
+## 评分
+
+- 降 AI 感：${analysis.scores.humanScore}
+- 章节爽点/钩子：${analysis.scores.hookScore}
+- 情绪推进：${analysis.scores.emotionScore}
+- 人物口吻一致性：${analysis.scores.voiceConsistency}
+
+## AI 腔命中
+
+${analysis.aiHits.length ? analysis.aiHits.map((item) => `- ${item.term} × ${item.count}`).join("\n") : "- 未发现明显高频 AI 腔连接词。"}
+
+## 人物口吻
+
+${analysis.voiceIssues.length ? analysis.voiceIssues.map((item) => `- ${item}`).join("\n") : "- 暂未发现明显口吻一致性问题。"}
+
+## 修订建议
+
+${analysis.suggestions.length ? analysis.suggestions.map((item) => `- ${item}`).join("\n") : "- 当前文本可以进入人工细修。"}
+`);
+  return { reportFile, targetFile, analysis };
+}
+
 async function runBatchOperation(projectId, { task = "quality", from = "", to = "" } = {}) {
   const chapters = await listChapters(projectId);
   const start = Number(from || 0);
@@ -5942,6 +6001,19 @@ async function routeApi(req, res, url) {
         title: "发布前总检查",
         detail: result.reportFile,
         files: [result.reportFile]
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
+    if (req.method === "POST" && parts[3] === "prose-quality") {
+      const body = await readBody(req);
+      const result = await generateProseQualityReport(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "quality",
+        status: "completed",
+        title: "文稿质量增强",
+        detail: result.reportFile,
+        files: [result.reportFile, result.targetFile].filter(Boolean)
       });
       return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }

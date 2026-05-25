@@ -120,6 +120,7 @@ const el = {
   qualityScope: document.querySelector("#qualityScope"),
   runQualityCheck: document.querySelector("#runQualityCheck"),
   runAiQualityCheck: document.querySelector("#runAiQualityCheck"),
+  runProseQualityReview: document.querySelector("#runProseQualityReview"),
   qualityPanel: document.querySelector("#qualityPanel"),
   revisionNote: document.querySelector("#revisionNote"),
   createRevisionTask: document.querySelector("#createRevisionTask"),
@@ -1947,6 +1948,33 @@ async function runAiQualityCheck() {
   }
 }
 
+async function runProseQualityReview() {
+  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  setBusy(true);
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/prose-quality`, {
+      method: "POST",
+      body: JSON.stringify({
+        file: state.activeFile || "",
+        text: el.draft?.value || ""
+      })
+    });
+    state.activeProject = data.project;
+    state.files = data.project.files || [];
+    state.chapters = data.project.chapters || [];
+    renderFiles();
+    renderProjectStats();
+    state.qualityReport = { reportFile: data.reportFile, verdict: { status: "文稿增强", score: data.analysis?.scores?.humanScore || 0 }, issues: (data.analysis?.suggestions || []).map((item) => ({ severity: "info", title: "修订建议", detail: item })) };
+    renderQualityReport();
+    await refreshTaskCenter();
+    setStatus(`文稿质量增强报告已生成：${data.reportFile}`);
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
 function renderResultPanel(panel, result, selectText, idleText) {
   if (!panel) return;
   if (!state.activeProject) {
@@ -3199,6 +3227,7 @@ on(el.runNarrativeRadar, "click", runNarrativeRadar);
 on(el.createSnapshot, "click", createSnapshot);
 on(el.runQualityCheck, "click", runQualityCheck);
 on(el.runAiQualityCheck, "click", runAiQualityCheck);
+on(el.runProseQualityReview, "click", runProseQualityReview);
 on(el.createRevisionTask, "click", createRevisionTaskFromReport);
 on(el.runRevisionTask, "click", runRevisionWorkflow);
 on(el.runBatchQuality, "click", runBatchQuality);

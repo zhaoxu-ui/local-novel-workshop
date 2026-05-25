@@ -71,6 +71,10 @@ try {
     method: "POST",
     body: JSON.stringify({ platform: "通用" })
   });
+  const proseQuality = await api(`/api/projects/${encodeURIComponent(id)}/prose-quality`, {
+    method: "POST",
+    body: JSON.stringify({ file: "01_正文/第001章_测试章节.md" })
+  });
   const releaseBackup = await api(`/api/projects/${encodeURIComponent(id)}/release-backup`, {
     method: "POST",
     body: JSON.stringify({})
@@ -276,6 +280,7 @@ try {
     revisionTask.taskFile,
     materials.file,
     finalPublishCheck.reportFile,
+    proseQuality.reportFile,
     releaseBackup.manifestFile,
     releasePackage.manifestFile,
     releaseNotes.file,
@@ -323,6 +328,9 @@ try {
   }
   if (!diagnosticsReport.reportFile?.includes("故障诊断报告")) {
     throw new Error("故障诊断报告未生成");
+  }
+  if (!proseQuality.analysis?.scores?.hookScore || !proseQuality.analysis?.scores?.voiceConsistency) {
+    throw new Error("文稿质量增强未返回钩子和口吻评分");
   }
   const styleMemory = JSON.parse(await fs.readFile(path.join(projectDir, "04_连续性", "style_memory.json"), "utf8"));
   if (!styleMemory.imitationProfile?.rhythm || !styleMemory.imitationProfile?.guardrails?.length) {
