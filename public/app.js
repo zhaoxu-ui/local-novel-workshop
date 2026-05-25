@@ -129,6 +129,10 @@ const el = {
   analyzeConflicts: document.querySelector("#analyzeConflicts"),
   publishPlatform: document.querySelector("#publishPlatform"),
   generatePublishMaterials: document.querySelector("#generatePublishMaterials"),
+  runFinalPublishCheck: document.querySelector("#runFinalPublishCheck"),
+  createReleaseBackup: document.querySelector("#createReleaseBackup"),
+  generateReleasePackage: document.querySelector("#generateReleasePackage"),
+  generateReleaseNotes: document.querySelector("#generateReleaseNotes"),
   saveModelPreset: document.querySelector("#saveModelPreset"),
   cloneProject: document.querySelector("#cloneProject"),
   workflowPanel: document.querySelector("#workflowPanel"),
@@ -1938,7 +1942,7 @@ function renderResultPanel(panel, result, selectText, idleText) {
   panel.innerHTML = "";
   const card = document.createElement("div");
   card.className = "workflow-card";
-  const files = [result.taskFile, result.revisionFile, result.file, result.reportFile, result.localReportFile].filter(Boolean);
+  const files = [result.taskFile, result.revisionFile, result.file, result.reportFile, result.localReportFile, result.manifestFile].filter(Boolean);
   card.innerHTML = `
     <strong>${escapeHtml(result.title || result.status || result.mode || "已完成")}</strong>
     <p>${escapeHtml(result.message || result.file || result.taskFile || result.reportFile || "")}</p>
@@ -2538,6 +2542,28 @@ async function generatePublishMaterials() {
   }, "发布资料包已生成。");
 }
 
+async function runFinalPublishCheck() {
+  await workflowPost("publish-final-check", {
+    platform: el.publishPlatform?.value.trim() || "通用"
+  }, "发布前总检查已生成。");
+}
+
+async function createReleaseBackup() {
+  await workflowPost("release-backup", {}, "完整备份包已创建。");
+}
+
+async function generateReleasePackage() {
+  await workflowPost("release-package", {
+    platform: el.publishPlatform?.value.trim() || "通用",
+    from: el.batchFrom?.value || "",
+    to: el.batchTo?.value || ""
+  }, "发布包清单已生成。");
+}
+
+async function generateReleaseNotes() {
+  await workflowPost("release-notes", {}, "安装包发布说明已生成。");
+}
+
 async function saveCurrentModelPreset() {
   await workflowPost("model-presets", {
     name: `${el.pipelineRunner.value}-${el.modelName.value || "codex"}`,
@@ -3112,6 +3138,10 @@ on(el.runRevisionTask, "click", runRevisionWorkflow);
 on(el.runBatchQuality, "click", runBatchQuality);
 on(el.analyzeConflicts, "click", analyzeConflicts);
 on(el.generatePublishMaterials, "click", generatePublishMaterials);
+on(el.runFinalPublishCheck, "click", runFinalPublishCheck);
+on(el.createReleaseBackup, "click", createReleaseBackup);
+on(el.generateReleasePackage, "click", generateReleasePackage);
+on(el.generateReleaseNotes, "click", generateReleaseNotes);
 on(el.saveModelPreset, "click", saveCurrentModelPreset);
 on(el.cloneProject, "click", cloneCurrentProject);
 on(el.refreshVersions, "click", refreshVersions);

@@ -1937,6 +1937,195 @@ ${titleList || "- 暂无章节"}
   return { file };
 }
 
+async function chapterWordCount(projectId, chapter) {
+  if (!chapter.file || !(await exists(projectPath(projectId, ...chapter.file.split("/"))))) return 0;
+  const text = await readProjectFile(projectId, chapter.file).catch(() => "");
+  return text.replace(/\s/g, "").length;
+}
+
+async function runFinalPublishCheck(projectId, { platform = "通用" } = {}) {
+  const meta = JSON.parse(await fs.readFile(projectPath(projectId, "project.json"), "utf8"));
+  const files = await listMarkdownFiles(projectId);
+  const chapters = await listChapters(projectId, files);
+  const checks = [];
+  const addCheck = (key, label, ok, detail, fix = "") => checks.push({ key, label, ok, detail, fix });
+  const sorted = chapters.filter((chapter) => chapter.no).sort((a, b) => Number(a.no) - Number(b.no));
+  const missingNos = [];
+  for (let i = sorted[0]?.no || 1; i <= (sorted.at(-1)?.no || 0); i++) {
+    if (!sorted.some((chapter) => Number(chapter.no) === i)) missingNos.push(i);
+  }
+  const missingTitles = sorted.filter((chapter) => !String(chapter.title || "").trim());
+  const wordCounts = [];
+  for (const chapter of sorted) {
+    wordCounts.push({ no: chapter.no, title: chapter.title || "", file: chapter.file || "", wordCount: await chapterWordCount(projectId, chapter) });
+  }
+  const shortChapters = wordCounts.filter((item) => item.wordCount > 0 && item.wordCount < 800);
+  const emptyChapters = wordCounts.filter((item) => !item.wordCount);
+  const tags = [
+    meta.genre,
+    ...(meta.premise || "").match(/同人|悬疑|热血|穿越|系统|群像|都市|玄幻|克苏鲁|无限|恋爱/g) || []
+  ].filter(Boolean);
+  const coverSource = files.includes("00_总控/封面与发布资料.md")
+    ? await readProjectFile(projectId, "00_总控/封面与发布资料.md").catch(() => "")
+    : "";
+  const latestPublish = await latestProjectFile(projectId, "06_发布/发布资料包_");
+  const publishText = latestPublish ? await readProjectFile(projectId, latestPublish).catch(() => "") : "";
+  const coverReady = /封面|主体|色调|场景|提示词/.test(`${coverSource}\n${publishText}`);
+
+  addCheck("chapter-continuity", "章节连续", !missingNos.length, missingNos.length ? `缺少章节号：${missingNos.join("、")}` : `共 ${sorted.length} 章，编号连续。`, "补齐章节规划或调整章节编号。");
+  addCheck("chapter-titles", "标题完整", !missingTitles.length, missingTitles.length ? `${missingTitles.length} 章缺标题。` : "章节标题完整。", "在章节看板补标题。");
+  addCheck("word-count", "字数检查", !emptyChapters.length && !shortChapters.length, emptyChapters.length ? `${emptyChapters.length} 章无正文。` : shortChapters.length ? `${shortChapters.length} 章低于 800 字。` : "章节正文均有有效字数。", "补正文或合并过短章节。");
+  addCheck("intro", "简介完整", Boolean(meta.premise), meta.premise ? "项目简介已填写。" : "项目简介为空。", "在项目创意或发布资料中补一句话简介。");
+  addCheck("tags", "标签完整", tags.length >= 1, tags.length ? `标签：${[...new Set(tags)].join(" / ")}` : "未识别类型或标签。", "补类型、卖点标签和平台标签。");
+  addCheck("cover", "封面描述", coverReady, coverReady ? "已找到封面描述或封面提示词。" : "未找到封面描述。", "生成发布资料包或补充封面提示词。");
+
+  const blockers = checks.filter((item) => !item.ok);
+  const score = Math.max(0, 100 - blockers.length * 14 - shortChapters.length * 4);
+  const status = blockers.length ? "需补齐" : "可整理发布";
+  const reportFile = `06_发布/发布前总检查_${timestampId()}.md`;
+  const rows = checks.map((item) => `| ${item.ok ? "通过" : "需处理"} | ${item.label} | ${item.detail} | ${item.fix || "-"} |`).join("\n");
+  const chapterRows = wordCounts.map((item) => `| 第${item.no}章 | ${item.title || ""} | ${item.wordCount} | ${item.file || ""} |`).join("\n");
+  await writeProjectFile(projectId, reportFile, `# 发布前总检查
+
+生成时间：${new Date().toISOString()}
+目标平台：${platform}
+
+## 结论
+
+- 状态：${status}
+- 分数：${score}
+- 阻断项：${blockers.length}
+
+## 检查项
+
+| 状态 | 项目 | 结果 | 建议 |
+| --- | --- | --- | --- |
+${rows}
+
+## 章节字数
+
+| 章节 | 标题 | 字数 | 文件 |
+| --- | --- | ---: | --- |
+${chapterRows || "| - | - | 0 | - |"}
+`);
+  return { reportFile, status, score, checks, blockers, wordCounts };
+}
+
+function shouldSkipBackupFile(rel) {
+  const normalized = rel.replaceAll("\\", "/");
+  return normalized.startsWith("06_发布/完整备份包_")
+    || normalized.includes("/.env")
+    || normalized.includes("/.codex/")
+    || normalized.includes("/.cc-switch/")
+    || normalized.includes("/node_modules/")
+    || normalized.includes("/release/");
+}
+
+async function copyProjectBackupFiles(projectId, sourceDir, targetDir, baseDir = sourceDir) {
+  const entries = await fs.readdir(sourceDir, { withFileTypes: true });
+  let count = 0;
+  for (const entry of entries) {
+    const source = path.join(sourceDir, entry.name);
+    const rel = path.relative(baseDir, source).replaceAll(path.sep, "/");
+    if (shouldSkipBackupFile(rel)) continue;
+    const target = path.join(targetDir, rel);
+    if (entry.isDirectory()) {
+      await fs.mkdir(target, { recursive: true });
+      count += await copyProjectBackupFiles(projectId, source, targetDir, baseDir);
+    } else if (entry.isFile()) {
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.copyFile(source, target);
+      count += 1;
+    }
+  }
+  return count;
+}
+
+async function createReleaseBackup(projectId) {
+  const stamp = timestampId();
+  const backupRootRel = `06_发布/完整备份包_${stamp}`;
+  const backupRoot = projectPath(projectId, ...backupRootRel.split("/"));
+  await fs.mkdir(backupRoot, { recursive: true });
+  const filesCopied = await copyProjectBackupFiles(projectId, projectPath(projectId), backupRoot);
+  const manifestFile = `${backupRootRel}/备份清单.md`;
+  await writeProjectFile(projectId, manifestFile, `# 项目完整备份包
+
+生成时间：${new Date().toISOString()}
+备份目录：\`${backupRootRel}\`
+
+## 范围
+
+- 已复制文件数：${filesCopied}
+- 包含项目资料、正文、设定、连续性、提示词、发布资料和运行时产物。
+- 排除本地敏感配置、依赖目录、安装包输出和旧备份包。
+
+## 使用方式
+
+需要恢复时，可把本目录内容复制回项目根目录；恢复前建议先创建项目快照。
+`);
+  return { backupDir: backupRootRel, manifestFile, filesCopied };
+}
+
+async function generateReleasePackage(projectId, { platform = "通用", from = "", to = "" } = {}) {
+  const finalCheck = await runFinalPublishCheck(projectId, { platform });
+  const materials = await generatePublishMaterials(projectId, { platform, from, to });
+  const txt = await exportProject(projectId, { format: "txt", platform, from, to, withTitles: true });
+  const md = await exportProject(projectId, { format: "md", platform, from, to, withTitles: true });
+  const manifestFile = `06_发布/发布包清单_${timestampId()}.md`;
+  const files = [finalCheck.reportFile, materials.file, txt.file, md.file];
+  await writeProjectFile(projectId, manifestFile, `# 发布包清单
+
+生成时间：${new Date().toISOString()}
+目标平台：${platform}
+
+## 文件
+
+${files.map((file) => `- \`${file}\``).join("\n")}
+
+## 发布前状态
+
+- 状态：${finalCheck.status}
+- 分数：${finalCheck.score}
+- 阻断项：${finalCheck.blockers.length}
+
+## 注意事项
+
+- 发布前再次核对简介、标签、封面提示词和章节标题。
+- 如果总检查仍有阻断项，先修复后再提交平台。
+`);
+  return { manifestFile, files: [manifestFile, ...files], finalCheck, materials };
+}
+
+async function generateReleaseNotes(projectId) {
+  const pkg = JSON.parse(await fs.readFile(path.join(ROOT, "package.json"), "utf8"));
+  const file = `06_发布/安装包发布说明_${pkg.version}_${timestampId()}.md`;
+  await writeProjectFile(projectId, file, `# Windows 安装包发布说明
+
+版本：v${pkg.version}
+生成时间：${new Date().toISOString()}
+
+## 安装包
+
+- 文件名：\`本地小说工坊 Setup ${pkg.version}.exe\`
+- 平台：Windows x64
+- 构建命令：\`npm run pack:win\`
+
+## 发布前检查
+
+- 运行 \`npm run check\`
+- 运行 \`npm run smoke\`
+- 运行 \`npm run regression\`
+- 运行 \`npm run prepare:github\`
+
+## 发布说明模板
+
+- 本地小说项目管理、Codex 直连、本地模型备用、多阶段流水线。
+- 发布前总检查、完整备份包和发布包清单。
+- 不包含用户项目数据、本地环境变量、Codex 配置或 cc-switch 配置。
+`);
+  return { file, version: pkg.version };
+}
+
 async function runBatchOperation(projectId, { task = "quality", from = "", to = "" } = {}) {
   const chapters = await listChapters(projectId);
   const start = Number(from || 0);
@@ -5552,6 +5741,56 @@ async function routeApi(req, res, url) {
         kind: "publish",
         status: "completed",
         title: "发布资料包",
+        detail: result.file,
+        files: [result.file]
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
+    if (req.method === "POST" && parts[3] === "publish-final-check") {
+      const body = await readBody(req);
+      const result = await runFinalPublishCheck(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "publish",
+        status: result.blockers?.length ? "needs_review" : "completed",
+        title: "发布前总检查",
+        detail: result.reportFile,
+        files: [result.reportFile]
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
+    if (req.method === "POST" && parts[3] === "release-backup") {
+      const result = await createReleaseBackup(projectId);
+      await recordProjectTask(projectId, {
+        kind: "publish",
+        status: "completed",
+        title: "项目完整备份包",
+        detail: result.backupDir,
+        files: [result.manifestFile]
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
+    if (req.method === "POST" && parts[3] === "release-package") {
+      const body = await readBody(req);
+      const result = await generateReleasePackage(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "publish",
+        status: result.finalCheck?.blockers?.length ? "needs_review" : "completed",
+        title: "发布包清单",
+        detail: result.manifestFile,
+        files: result.files
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
+    if (req.method === "POST" && parts[3] === "release-notes") {
+      const result = await generateReleaseNotes(projectId);
+      await recordProjectTask(projectId, {
+        kind: "publish",
+        status: "completed",
+        title: "安装包发布说明",
         detail: result.file,
         files: [result.file]
       });

@@ -1,7 +1,7 @@
 {
   "name": "local-novel-studio",
   "productName": "本地小说工坊",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "本地化 AI 小说创作工作台",
   "author": "",
   "private": true,

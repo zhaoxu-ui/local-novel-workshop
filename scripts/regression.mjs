@@ -55,6 +55,22 @@ try {
     method: "POST",
     body: JSON.stringify({ platform: "通用" })
   });
+  const finalPublishCheck = await api(`/api/projects/${encodeURIComponent(id)}/publish-final-check`, {
+    method: "POST",
+    body: JSON.stringify({ platform: "通用" })
+  });
+  const releaseBackup = await api(`/api/projects/${encodeURIComponent(id)}/release-backup`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  const releasePackage = await api(`/api/projects/${encodeURIComponent(id)}/release-package`, {
+    method: "POST",
+    body: JSON.stringify({ platform: "通用", from: 1, to: 1 })
+  });
+  const releaseNotes = await api(`/api/projects/${encodeURIComponent(id)}/release-notes`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
   const batch = await api(`/api/projects/${encodeURIComponent(id)}/batch`, {
     method: "POST",
     body: JSON.stringify({ task: "quality", from: 1, to: 1 })
@@ -242,6 +258,10 @@ try {
     quality.reportFile,
     revisionTask.taskFile,
     materials.file,
+    finalPublishCheck.reportFile,
+    releaseBackup.manifestFile,
+    releasePackage.manifestFile,
+    releaseNotes.file,
     batch.file,
     exported.file,
     conflicts.reportFile,
@@ -273,6 +293,12 @@ try {
   }
   if (!tasks.tasks?.some((item) => item.source === "task-index" && item.kind === "quality")) {
     throw new Error("任务中心未优先返回统一任务索引记录");
+  }
+  if (!finalPublishCheck.checks?.some((item) => item.key === "chapter-continuity") || !releasePackage.files?.some((file) => file.endsWith(".txt")) || !releasePackage.files?.some((file) => file.endsWith(".md"))) {
+    throw new Error("发布准备版未生成总检查或发布包清单");
+  }
+  if (!releaseBackup.filesCopied || !releaseBackup.manifestFile?.includes("完整备份包")) {
+    throw new Error("项目完整备份包未生成");
   }
   const styleMemory = JSON.parse(await fs.readFile(path.join(projectDir, "04_连续性", "style_memory.json"), "utf8"));
   if (!styleMemory.imitationProfile?.rhythm || !styleMemory.imitationProfile?.guardrails?.length) {
