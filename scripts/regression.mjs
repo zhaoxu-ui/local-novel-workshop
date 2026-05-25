@@ -24,6 +24,18 @@ async function api(url, options = {}) {
 }
 
 try {
+  const demo = await api("/api/demo-project", {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  if (!demo.project?.id || !demo.acceptanceReport) {
+    throw new Error("演示项目未创建验收报告");
+  }
+  const demoProject = await api(`/api/projects/${encodeURIComponent(demo.project.id)}`);
+  if (!demoProject.project.chapters?.length || demoProject.project.chapters.length < 10 || !demoProject.project.files.includes("01_正文/第001章_雨停后的门.md")) {
+    throw new Error("演示项目未包含 10 章规划和样章");
+  }
+
   const created = await api("/api/projects", {
     method: "POST",
     body: JSON.stringify({ name: "回归测试项目", genre: "悬疑", premise: "一个测试用的长篇小说项目。" })

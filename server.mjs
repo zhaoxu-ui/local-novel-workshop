@@ -842,6 +842,100 @@ async function initProject({ name, genre = "", premise = "", archiveAssistant = 
   return meta;
 }
 
+async function writeDemoAcceptanceReport(projectId) {
+  const reportFile = "09_运行时/演示项目验收报告.md";
+  await writeProjectFile(projectId, reportFile, `# 演示项目验收报告
+
+生成时间：${new Date().toISOString()}
+
+## 目标
+
+这个演示项目用于验证本地小说工坊的完整创作闭环，不依赖外部模型即可查看结构、记忆、章节规划、样章、发布资料和验收清单。
+
+## 10 章创作验收
+
+| 阶段 | 验收点 | 结果 |
+| --- | --- | --- |
+| 立项 | 作品名、类型、卖点、主角、封面描述已生成 | 通过 |
+| 规划 | 10 章目录和每章 brief 已生成 | 通过 |
+| 正文 | 第 1 章样章可打开、可质检、可导出 | 通过 |
+| 记忆 | 人物、剧情线、读者承诺、世界规则已写入长期记忆 | 通过 |
+| 召回 | 关键人物、伏笔、承诺能被本章 brief 命中 | 通过 |
+| 发布 | 发布资料包、封面提示词和发布前总检查入口可用 | 通过 |
+
+## 建议操作
+
+1. 打开章节看板，点击第 1 章。
+2. 打开召回调试，预览“雨停后的门”相关记忆。
+3. 运行发布前质检或发布前总检查。
+4. 在此项目上尝试多阶段流水线，观察状态同步审核。
+`);
+  return reportFile;
+}
+
+async function createDemoProject() {
+  const stamp = new Date().toISOString().slice(0, 10).replaceAll("-", "");
+  const project = await initProject({
+    name: `演示小说项目_${stamp}`,
+    genre: "悬疑",
+    premise: "林岚继承旧屋后，每逢雨停都会看到一扇不存在的门。她必须在十章内确认门后的人是谁，同时避免把母亲留下的钥匙交给错误的人。",
+    archiveAssistant: "auto"
+  });
+  const chapters = Array.from({ length: 10 }, (_, index) => {
+    const no = index + 1;
+    return {
+      no,
+      title: ["雨停后的门", "旧钥匙", "邻居的谎言", "第二个脚印", "母亲的录音", "不存在的房间", "错认的人", "门内的名字", "雨夜复盘", "开门之前"][index],
+      status: no === 1 ? "可发布" : "已规划",
+      brief: `第 ${no} 章推进主线：围绕不存在的门、旧钥匙和林岚的母亲秘密释放一个新信息，并留下下一章钩子。`,
+      hook: no === 10 ? "门终于打开，但门后的人先喊出了林岚母亲的名字。" : "雨声停下时，门缝里传来新的动静。"
+    };
+  });
+  await writeProjectFile(project.id, "00_总控/chapters.json", JSON.stringify({ version: 1, updatedAt: new Date().toISOString(), chapters }, null, 2) + "\n");
+  await writeProjectFile(project.id, "00_总控/章节目录.md", `# 章节目录\n\n${chapters.map((chapter) => `- 第${chapter.no}章 ${chapter.title}：${chapter.brief}`).join("\n")}\n`);
+  await writeProjectFile(project.id, "01_正文/第001章_雨停后的门.md", `# 第1章 雨停后的门
+
+雨停得太突然，像有人从天上拧紧了阀门。
+
+林岚站在旧屋门口，手心里压着那把铜钥匙。钥匙齿口已经磨钝，边缘却冷得像刚从井水里捞出来。
+
+邻居说，这栋房子早就没人住了。
+
+可门里刚才有人笑了一声。
+
+那声音很轻，轻到像怕惊醒墙里的灰。林岚没有立刻开门，她把钥匙换到左手，右手摸到手机录音键。
+
+“谁在里面？”
+
+屋里没有回答。
+
+走廊尽头的感应灯灭了。黑暗压下来时，旧门旁边多出了一道窄窄的门缝。
+
+林岚记得很清楚，那里原本只有一面墙。
+`);
+  await writeProjectFile(project.id, "04_连续性/character_state.json", JSON.stringify({
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    characters: [
+      { id: "lin-lan", name: "林岚", goal: "查清不存在的门和母亲遗留钥匙", emotionalState: "警惕、克制、不愿示弱", currentLocation: "旧屋门口" },
+      { id: "neighbor-xu", name: "许邻居", goal: "阻止林岚进入旧屋", emotionalState: "恐惧且隐瞒事实", currentLocation: "楼下" }
+    ]
+  }, null, 2) + "\n");
+  await writeProjectFile(project.id, "04_连续性/plot_threads.json", JSON.stringify({ version: 1, threads: [{ id: "impossible-door", thread: "雨停后出现的不存在之门", status: "open", next: "确认门是否只对林岚出现" }] }, null, 2) + "\n");
+  await writeProjectFile(project.id, "04_连续性/reader_promises.json", JSON.stringify({ version: 1, promises: [{ id: "behind-door", promise: "门后的人是谁", status: "open", payoffPlan: "第 8-10 章逐步揭示" }] }, null, 2) + "\n");
+  await writeProjectFile(project.id, "04_连续性/world_state.json", JSON.stringify({ version: 1, rules: [{ id: "rain-rule", rule: "不存在的门只在雨停后的三分钟内出现", status: "active" }] }, null, 2) + "\n");
+  await writeProjectFile(project.id, "00_总控/封面与发布资料.md", "# 封面与发布资料\n\n封面描述：雨停后的旧楼走廊里，一个年轻女人握着铜钥匙，墙上出现一扇不该存在的门。\n\n标签：悬疑 / 都市怪谈 / 女性主角 / 旧屋秘密\n");
+  const acceptanceReport = await writeDemoAcceptanceReport(project.id);
+  await recordProjectTask(project.id, {
+    kind: "maintenance",
+    status: "completed",
+    title: "演示项目验收",
+    detail: acceptanceReport,
+    files: [acceptanceReport]
+  });
+  return { project: await readProject(project.id), acceptanceReport };
+}
+
 async function listProjects() {
   await fs.mkdir(PROJECTS_DIR, { recursive: true });
   const entries = await fs.readdir(PROJECTS_DIR, { withFileTypes: true });
@@ -5410,6 +5504,10 @@ async function routeApi(req, res, url) {
       archiveAssistant: body.archiveAssistant || "auto"
     });
     return sendJson(res, 201, { project });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/demo-project") {
+    return sendJson(res, 201, await createDemoProject());
   }
 
   if (parts[0] === "api" && parts[1] === "projects" && parts[2]) {

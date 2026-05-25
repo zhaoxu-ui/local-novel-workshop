@@ -48,6 +48,7 @@ const el = {
   toggleNewProject: document.querySelector("#toggleNewProject"),
   newProjectBody: document.querySelector("#newProjectBody"),
   createProject: document.querySelector("#createProject"),
+  createDemoProject: document.querySelector("#createDemoProject"),
   projectList: document.querySelector("#projectList"),
   activeProjectName: document.querySelector("#activeProjectName"),
   projectMeta: document.querySelector("#projectMeta"),
@@ -1089,6 +1090,23 @@ async function createProject() {
     el.projectPremise.value = "";
     await loadProjects();
     await loadProject(data.project.id);
+  } catch (error) {
+    setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+async function createDemoProject() {
+  setBusy(true);
+  try {
+    const data = await api("/api/demo-project", {
+      method: "POST",
+      body: JSON.stringify({})
+    });
+    await loadProjects();
+    if (data.project?.id) await loadProject(data.project.id);
+    setStatus(`演示项目已创建：${data.project?.name || ""}`);
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -3162,6 +3180,7 @@ on(el.runDoctor, "click", () => runDoctor(true));
 on(el.runMemorySchemaCheck, "click", runMemorySchemaCheck);
 on(el.generateDiagnosticsReport, "click", generateDiagnosticsReport);
 on(el.createProject, "click", createProject);
+on(el.createDemoProject, "click", createDemoProject);
 on(el.fileSelect, "change", loadSelectedFile);
 on(el.saveChapterPlan, "click", saveChapterPlan);
 on(el.saveChapter, "click", saveChapter);
