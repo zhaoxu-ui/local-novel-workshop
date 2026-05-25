@@ -1,0 +1,60 @@
+{
+  "name": "local-novel-studio",
+  "productName": "本地小说工坊",
+  "version": "0.1.0",
+  "description": "本地化 AI 小说创作工作台",
+  "author": "",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "start": "node server.mjs",
+    "desktop": "electron .",
+    "pack:win": "electron-builder --win nsis --x64",
+    "check": "node --check server.mjs && node --check public/app.js && node --check electron/main.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "regression": "node scripts/regression.mjs",
+    "prepare:github": "node scripts/prepare-github.mjs"
+  },
+  "devDependencies": {
+    "electron": "^32.3.3",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.localnovelstudio.app",
+    "productName": "本地小说工坊",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "public/**/*",
+      "server.mjs",
+      "package.json",
+      "README.md",
+      "使用教程.md"
+    ],
+    "extraMetadata": {
+      "main": "electron/main.mjs"
+    },
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "本地小说工坊"
+    }
+  }
+}

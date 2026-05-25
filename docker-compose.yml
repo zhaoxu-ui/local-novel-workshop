@@ -1,0 +1,18 @@
+services:
+  local-novel-studio:
+    build:
+      context: .
+    container_name: local-novel-studio
+    ports:
+      - "8787:8787"
+    environment:
+      PORT: "8787"
+      CODEX_HOME: /root/.codex
+      CC_SWITCH_HOME: /root/.cc-switch
+      IN_DOCKER: "true"
+      HOST_PROJECTS_DIR: "${HOST_PROJECTS_DIR:-}"
+    volumes:
+      - ./projects:/app/projects
+      - ${USERPROFILE}/.codex:/root/.codex
+      - ${USERPROFILE}/.cc-switch:/root/.cc-switch:ro
+    restart: unless-stopped
