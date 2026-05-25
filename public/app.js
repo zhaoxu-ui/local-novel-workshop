@@ -137,6 +137,9 @@ const el = {
   generateReleaseNotes: document.querySelector("#generateReleaseNotes"),
   saveModelPreset: document.querySelector("#saveModelPreset"),
   cloneProject: document.querySelector("#cloneProject"),
+  exportPortableProject: document.querySelector("#exportPortableProject"),
+  repairMemoryJson: document.querySelector("#repairMemoryJson"),
+  runProjectIntegrityCheck: document.querySelector("#runProjectIntegrityCheck"),
   workflowPanel: document.querySelector("#workflowPanel"),
   maintenancePanel: document.querySelector("#maintenancePanel"),
   refreshVersions: document.querySelector("#refreshVersions"),
@@ -2632,6 +2635,18 @@ async function cloneCurrentProject() {
   }
 }
 
+async function exportPortableProject() {
+  await workflowPost("portable-export", {}, "项目迁移包已生成。", "maintenance");
+}
+
+async function repairMemoryJson() {
+  await workflowPost("memory-repair", {}, "记忆 JSON 自动修复已完成。", "maintenance");
+}
+
+async function runProjectIntegrityCheck() {
+  await workflowPost("integrity-check", {}, "项目损坏诊断已生成。", "maintenance");
+}
+
 async function diffVersion(versionFile) {
   if (!state.activeFile) return setStatus("请先打开一个正文文件。", "error");
   const data = await workflowPost("versions/diff", { file: state.activeFile, versionFile }, "版本对照已生成。");
@@ -3239,6 +3254,9 @@ on(el.generateReleasePackage, "click", generateReleasePackage);
 on(el.generateReleaseNotes, "click", generateReleaseNotes);
 on(el.saveModelPreset, "click", saveCurrentModelPreset);
 on(el.cloneProject, "click", cloneCurrentProject);
+on(el.exportPortableProject, "click", exportPortableProject);
+on(el.repairMemoryJson, "click", repairMemoryJson);
+on(el.runProjectIntegrityCheck, "click", runProjectIntegrityCheck);
 on(el.refreshVersions, "click", refreshVersions);
 on(el.incubateIdea, "click", incubateIdea);
 on(el.absorbKnowledge, "click", absorbKnowledge);

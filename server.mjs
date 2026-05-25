@@ -2109,6 +2109,7 @@ ${chapterRows || "| - | - | 0 | - |"}
 function shouldSkipBackupFile(rel) {
   const normalized = rel.replaceAll("\\", "/");
   return normalized.startsWith("06_发布/完整备份包_")
+    || normalized.startsWith("06_发布/项目迁移包_")
     || normalized.includes("/.env")
     || normalized.includes("/.codex/")
     || normalized.includes("/.cc-switch/")
@@ -2349,6 +2350,119 @@ ${analysis.voiceIssues.length ? analysis.voiceIssues.map((item) => `- ${item}`).
 ${analysis.suggestions.length ? analysis.suggestions.map((item) => `- ${item}`).join("\n") : "- 当前文本可以进入人工细修。"}
 `);
   return { reportFile, targetFile, analysis };
+}
+
+async function exportPortableProject(projectId) {
+  const meta = JSON.parse(await fs.readFile(projectPath(projectId, "project.json"), "utf8"));
+  const stamp = timestampId();
+  const exportDir = `06_发布/项目迁移包_${stamp}`;
+  const target = projectPath(projectId, ...exportDir.split("/"));
+  await fs.mkdir(target, { recursive: true });
+  const copied = await copyProjectBackupFiles(projectId, projectPath(projectId), target);
+  const manifestFile = `${exportDir}/迁移清单.md`;
+  await writeProjectFile(projectId, manifestFile, `# 项目迁移清单
+
+生成时间：${new Date().toISOString()}
+项目：${meta.name}
+项目 ID：${projectId}
+
+## 迁移包
+
+- 目录：\`${exportDir}\`
+- 文件数：${copied}
+- 已排除本地敏感配置、依赖目录、安装包输出和旧迁移包。
+
+## 导入方式
+
+1. 在另一台电脑安装或克隆本工具。
+2. 把迁移包中的项目内容复制到 \`projects/${projectId}\`。
+3. 启动本地服务后运行“项目损坏诊断”和“长期记忆校验”。
+`);
+  return { exportDir, manifestFile, filesCopied: copied };
+}
+
+async function repairProjectMemoryJson(projectId) {
+  const repaired = [];
+  for (const [file, schema] of Object.entries(MEMORY_SCHEMAS)) {
+    const full = projectPath(projectId, ...file.split("/"));
+    let payload = {};
+    let changed = false;
+    if (await exists(full)) {
+      try {
+        payload = JSON.parse(await fs.readFile(full, "utf8"));
+      } catch {
+        payload = {};
+        changed = true;
+      }
+    } else {
+      changed = true;
+    }
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+      payload = {};
+      changed = true;
+    }
+    if (payload.version == null || typeof payload.version !== "number") {
+      payload.version = 1;
+      changed = true;
+    }
+    if (schema.root && schema.root !== "imitationProfile" && !Array.isArray(payload[schema.root])) {
+      payload[schema.root] = [];
+      changed = true;
+    }
+    if (schema.root === "imitationProfile" && payload[schema.root] == null) {
+      payload[schema.root] = {};
+      changed = true;
+    }
+    if (changed) {
+      payload.repairedAt = new Date().toISOString();
+      await writeProjectFile(projectId, file, JSON.stringify(payload, null, 2) + "\n");
+      repaired.push(file);
+    }
+  }
+  const reportFile = `09_运行时/记忆自动修复_${timestampId()}.md`;
+  await writeProjectFile(projectId, reportFile, `# 记忆 JSON 自动修复
+
+生成时间：${new Date().toISOString()}
+
+## 修复文件
+
+${repaired.length ? repaired.map((file) => `- \`${file}\``).join("\n") : "- 未发现需要修复的长期记忆 JSON。"}
+`);
+  return { repaired, reportFile, project: await readProject(projectId) };
+}
+
+async function runProjectIntegrityCheck(projectId) {
+  const required = ["project.json", "00_总控/chapters.json", "01_正文", "04_连续性/character_state.json", "05_提示词/档案助手.md"];
+  const issues = [];
+  for (const rel of required) {
+    if (!(await exists(projectPath(projectId, ...rel.split("/"))))) {
+      issues.push({ severity: "critical", file: rel, detail: "核心文件或目录缺失" });
+    }
+  }
+  const memory = await validateProjectMemorySchemas(projectId);
+  for (const item of memory.files.filter((row) => !row.ok)) {
+    issues.push({ severity: "warn", file: item.file, detail: item.issues.join("；") });
+  }
+  const reportFile = `09_运行时/项目损坏诊断_${timestampId()}.md`;
+  await writeProjectFile(projectId, reportFile, `# 项目损坏诊断
+
+生成时间：${new Date().toISOString()}
+
+## 结论
+
+- 状态：${issues.length ? "需处理" : "结构正常"}
+- 问题数：${issues.length}
+
+## 问题
+
+${issues.length ? issues.map((item) => `- **${item.severity}** \`${item.file}\`：${item.detail}`).join("\n") : "- 未发现核心结构损坏。"}
+
+## 建议
+
+- 如长期记忆 JSON 损坏，先运行“记忆 JSON 自动修复”。
+- 如核心文件缺失，从完整备份包或迁移包恢复。
+`);
+  return { reportFile, issues, ok: issues.length === 0 };
 }
 
 async function runBatchOperation(projectId, { task = "quality", from = "", to = "" } = {}) {
@@ -5633,6 +5747,24 @@ async function routeApi(req, res, url) {
         detail: result.reportFile,
         files: [result.reportFile]
       });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
+    if (req.method === "POST" && parts[3] === "portable-export") {
+      const result = await exportPortableProject(projectId);
+      await recordProjectTask(projectId, { kind: "maintenance", status: "completed", title: "项目迁移包", detail: result.exportDir, files: [result.manifestFile] });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
+    if (req.method === "POST" && parts[3] === "memory-repair") {
+      const result = await repairProjectMemoryJson(projectId);
+      await recordProjectTask(projectId, { kind: "maintenance", status: "completed", title: "记忆 JSON 自动修复", detail: result.reportFile, files: [result.reportFile, ...result.repaired] });
+      return sendJson(res, 200, result);
+    }
+
+    if (req.method === "POST" && parts[3] === "integrity-check") {
+      const result = await runProjectIntegrityCheck(projectId);
+      await recordProjectTask(projectId, { kind: "maintenance", status: result.ok ? "completed" : "needs_review", title: "项目损坏诊断", detail: result.reportFile, files: [result.reportFile] });
       return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }
 

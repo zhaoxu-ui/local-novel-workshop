@@ -92,6 +92,18 @@ try {
     method: "POST",
     body: JSON.stringify({})
   });
+  const portableExport = await api(`/api/projects/${encodeURIComponent(id)}/portable-export`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  const memoryRepair = await api(`/api/projects/${encodeURIComponent(id)}/memory-repair`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  const integrityCheck = await api(`/api/projects/${encodeURIComponent(id)}/integrity-check`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
   const batch = await api(`/api/projects/${encodeURIComponent(id)}/batch`, {
     method: "POST",
     body: JSON.stringify({ task: "quality", from: 1, to: 1 })
@@ -285,6 +297,9 @@ try {
     releasePackage.manifestFile,
     releaseNotes.file,
     diagnosticsReport.reportFile,
+    portableExport.manifestFile,
+    memoryRepair.reportFile,
+    integrityCheck.reportFile,
     batch.file,
     exported.file,
     conflicts.reportFile,
@@ -331,6 +346,9 @@ try {
   }
   if (!proseQuality.analysis?.scores?.hookScore || !proseQuality.analysis?.scores?.voiceConsistency) {
     throw new Error("文稿质量增强未返回钩子和口吻评分");
+  }
+  if (!portableExport.manifestFile?.includes("迁移清单") || !Array.isArray(memoryRepair.repaired) || !integrityCheck.reportFile?.includes("项目损坏诊断")) {
+    throw new Error("项目安全与迁移功能未返回预期产物");
   }
   const styleMemory = JSON.parse(await fs.readFile(path.join(projectDir, "04_连续性", "style_memory.json"), "utf8"));
   if (!styleMemory.imitationProfile?.rhythm || !styleMemory.imitationProfile?.guardrails?.length) {
