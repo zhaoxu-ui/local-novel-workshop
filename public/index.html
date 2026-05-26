@@ -238,48 +238,6 @@
               </label>
             </div>
 
-            <section class="pipeline-dock" aria-label="生成流水线">
-              <div>
-                <h2>生成这一章</h2>
-                <p>系统会自动规划、写作、审稿、修订，并把重要信息同步到项目记忆。</p>
-              </div>
-              <button id="runPipeline" class="primary">生成这一章</button>
-              <div id="pipelineProgress" class="pipeline-progress" aria-label="章节生成进度">
-                <span class="flow-step" data-flow-step="prepare">准备资料</span>
-                <span class="flow-step" data-flow-step="plan">规划</span>
-                <span class="flow-step" data-flow-step="write">写作</span>
-                <span class="flow-step" data-flow-step="review">审稿</span>
-                <span class="flow-step" data-flow-step="revise">修订</span>
-                <span class="flow-step" data-flow-step="memory">同步记忆</span>
-              </div>
-              <div id="pipelinePreflightPanel" class="preflight-panel" hidden>
-                <div>
-                  <strong id="preflightTitle">开始前还差一点</strong>
-                  <p id="preflightText">补齐下面几项后，就可以生成这一章。</p>
-                </div>
-                <ul id="preflightItems"></ul>
-                <div class="preflight-actions">
-                  <button id="preflightProjectAction" type="button">选择或创建项目</button>
-                  <button id="preflightBriefAction" type="button">填写本章想法</button>
-                  <button id="preflightAiAction" type="button">检查 AI 配置</button>
-                </div>
-              </div>
-              <div id="status" class="status">准备就绪</div>
-            </section>
-            <section id="operationFeedback" class="operation-feedback idle" aria-live="polite">
-              <div>
-                <strong id="operationTitle">等待操作</strong>
-                <p id="operationDetail">点击生成、保存、质检或发布按钮后，这里会显示执行进度和结果位置。</p>
-              </div>
-              <span id="operationLocation">结果位置：暂无</span>
-              <ol id="operationHistory"></ol>
-            </section>
-
-            <label class="brief-box">
-              这一章想写什么
-              <textarea id="chapterBrief" rows="5" placeholder="例如：主角第一次进案发地，发现一个不该存在的人影，结尾留下新疑点"></textarea>
-            </label>
-
             <section class="draft-box markdown-editor" aria-labelledby="draftEditorTitle">
               <div class="markdown-editor-head">
                 <div>
@@ -296,38 +254,7 @@
                 <article id="draftPreview" class="markdown-preview" hidden aria-label="Markdown 预览"></article>
               </div>
             </section>
-            <section id="writingQualityLoop" class="writing-quality-loop" aria-label="写作质检闭环">
-              <div>
-                <p class="eyebrow">写作质检</p>
-                <h2 id="writingQualityTitle">反 AI 味 · 文风 · 人物一致性</h2>
-                <p id="writingQualityText">生成或粘贴正文后，一键检查是否像真人写作、是否贴合文风档案、人物状态是否前后一致。</p>
-              </div>
-              <button id="runWritingQualityLoop" type="button">检查这一章</button>
-              <div id="writingQualityResult" class="writing-quality-result"></div>
-            </section>
-            <section id="publishCenter" class="publish-center" aria-label="发布中心">
-              <div>
-                <p class="eyebrow">发布中心</p>
-                <h2 id="publishCenterTitle">发布前一键整理</h2>
-                <p id="publishCenterText">生成发布资料、平台模板、总检查和 Markdown 导出，适合最后整理上架。</p>
-              </div>
-              <label>
-                目标平台
-                <select id="publishCenterPlatform">
-                  <option value="通用">通用</option>
-                  <option value="番茄">番茄</option>
-                  <option value="起点">起点</option>
-                  <option value="七猫">七猫</option>
-                  <option value="飞卢">飞卢</option>
-                </select>
-              </label>
-              <button id="runPublishCenter" type="button">整理发布包</button>
-              <div id="publishCenterResult" class="publish-center-result"></div>
-            </section>
-            <div class="editor-actions">
-              <button id="saveChapterPlan">保存章节规划</button>
-              <button id="saveChapter">保存为章节</button>
-              <button id="compareLatestVersion">对照最新版本</button>
+            <div class="autosave-line">
               <span id="autosaveStatus" class="autosave-status">自动保存待机</span>
             </div>
           </section>
@@ -365,6 +292,84 @@
             <section class="panel grow" data-tool-group="write project" data-tool-panel="chapter-board">
               <h2>章节看板</h2>
               <div id="chapterBoard" class="chapter-board muted">选择项目后显示章节规划</div>
+            </section>
+
+            <section class="panel compact-panel text-actions-panel" data-tool-group="write quality publish revision" data-tool-panel="text-actions">
+              <h2>文本操作</h2>
+              <div class="hint">中间只保留正文和预览。保存、质检、发布和版本对照集中放在这里。</div>
+              <label class="brief-box">
+                这一章想写什么
+                <textarea id="chapterBrief" rows="5" placeholder="例如：主角第一次进案发地，发现一个不该存在的人影，结尾留下新疑点"></textarea>
+              </label>
+              <section class="pipeline-dock" aria-label="生成流水线">
+                <div>
+                  <h2>生成这一章</h2>
+                  <p>系统会自动规划、写作、审稿、修订，并把重要信息同步到项目记忆。</p>
+                </div>
+                <button id="runPipeline" class="primary">生成这一章</button>
+                <div id="pipelineProgress" class="pipeline-progress" aria-label="章节生成进度">
+                  <span class="flow-step" data-flow-step="prepare">准备资料</span>
+                  <span class="flow-step" data-flow-step="plan">规划</span>
+                  <span class="flow-step" data-flow-step="write">写作</span>
+                  <span class="flow-step" data-flow-step="review">审稿</span>
+                  <span class="flow-step" data-flow-step="revise">修订</span>
+                  <span class="flow-step" data-flow-step="memory">同步记忆</span>
+                </div>
+                <div id="pipelinePreflightPanel" class="preflight-panel" hidden>
+                  <div>
+                    <strong id="preflightTitle">开始前还差一点</strong>
+                    <p id="preflightText">补齐下面几项后，就可以生成这一章。</p>
+                  </div>
+                  <ul id="preflightItems"></ul>
+                  <div class="preflight-actions">
+                    <button id="preflightProjectAction" type="button">选择或创建项目</button>
+                    <button id="preflightBriefAction" type="button">填写本章想法</button>
+                    <button id="preflightAiAction" type="button">检查 AI 配置</button>
+                  </div>
+                </div>
+                <div id="status" class="status">准备就绪</div>
+              </section>
+              <section id="operationFeedback" class="operation-feedback idle" aria-live="polite">
+                <div>
+                  <strong id="operationTitle">等待操作</strong>
+                  <p id="operationDetail">点击生成、保存、质检或发布按钮后，这里会显示执行进度和结果位置。</p>
+                </div>
+                <span id="operationLocation">结果位置：暂无</span>
+                <ol id="operationHistory"></ol>
+              </section>
+              <div class="editor-actions">
+                <button id="saveChapterPlan">保存章节规划</button>
+                <button id="saveChapter" class="primary">保存为章节</button>
+                <button id="compareLatestVersion">对照最新版本</button>
+              </div>
+              <section id="writingQualityLoop" class="writing-quality-loop" aria-label="写作质检闭环">
+                <div>
+                  <p class="eyebrow">写作质检</p>
+                  <h2 id="writingQualityTitle">反 AI 味 · 文风 · 人物一致性</h2>
+                  <p id="writingQualityText">生成或粘贴正文后，一键检查是否像真人写作、是否贴合文风档案、人物状态是否前后一致。</p>
+                </div>
+                <button id="runWritingQualityLoop" type="button">检查这一章</button>
+                <div id="writingQualityResult" class="writing-quality-result"></div>
+              </section>
+              <section id="publishCenter" class="publish-center" aria-label="发布中心">
+                <div>
+                  <p class="eyebrow">发布中心</p>
+                  <h2 id="publishCenterTitle">发布前一键整理</h2>
+                  <p id="publishCenterText">生成发布资料、平台模板、总检查和 Markdown 导出，适合最后整理上架。</p>
+                </div>
+                <label>
+                  目标平台
+                  <select id="publishCenterPlatform">
+                    <option value="通用">通用</option>
+                    <option value="番茄">番茄</option>
+                    <option value="起点">起点</option>
+                    <option value="七猫">七猫</option>
+                    <option value="飞卢">飞卢</option>
+                  </select>
+                </label>
+                <button id="runPublishCenter" type="button">整理发布包</button>
+                <div id="publishCenterResult" class="publish-center-result"></div>
+              </section>
             </section>
 
             <section class="panel compact-panel" data-tool-group="write project system" data-tool-panel="global-search">

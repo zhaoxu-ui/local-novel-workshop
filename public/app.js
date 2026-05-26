@@ -28,6 +28,7 @@ const state = {
   snapshots: [],
   incubationResult: null,
   editorMode: "edit",
+  draftBaseline: "",
   operation: {
     busy: false,
     activeButton: null,
@@ -43,7 +44,7 @@ const state = {
     status: "idle"
   },
   activeToolGroup: "write",
-  activeToolPanel: "chapter-board",
+  activeToolPanel: "text-actions",
   autosaveTimer: null,
   lastAutosaveKey: "",
   layout: {
@@ -444,7 +445,7 @@ async function handleOnboardingAction(action) {
   state.layout.quickOpenCollapsed = true;
   state.layout.advancedToolsCollapsed = true;
   state.activeToolGroup = "write";
-  state.activeToolPanel = "chapter-board";
+  state.activeToolPanel = "text-actions";
   if (action === "manual") {
     setCreationMode("manual");
     highlightAndFocus(el.projectName, el.projectName?.closest(".creation-start-panel"), "填写项目名和初始设定，再点击创建小说项目。", "");
@@ -498,7 +499,7 @@ function loadLayoutState() {
       state.layout.rightCollapsed = false;
     }
     state.activeToolGroup = normalizeToolboxGroup(saved.activeToolGroup || "write");
-    state.activeToolPanel = saved.activeToolPanel || "chapter-board";
+    state.activeToolPanel = !saved.activeToolPanel || saved.activeToolPanel === "chapter-board" ? "text-actions" : saved.activeToolPanel;
   } catch {
     state.layout.leftCollapsed = false;
     state.layout.rightCollapsed = false;
@@ -510,7 +511,7 @@ function loadLayoutState() {
     state.layout.creationMode = "idea";
     state.layout.experienceMode = "beginner";
     state.activeToolGroup = "write";
-    state.activeToolPanel = "chapter-board";
+    state.activeToolPanel = "text-actions";
   }
 }
 
@@ -783,7 +784,7 @@ function toggleAdvancedTools(force) {
   state.layout.advancedToolsCollapsed = typeof force === "boolean" ? force : !state.layout.advancedToolsCollapsed;
   if (state.layout.advancedToolsCollapsed) {
     state.activeToolGroup = "write";
-    state.activeToolPanel = "chapter-board";
+    state.activeToolPanel = "text-actions";
   }
   renderLayoutState();
   setToolboxGroup(state.activeToolGroup);
@@ -2135,6 +2136,11 @@ async function loadCodexConfig() {
 }
 
 async function loadProject(id) {
+  if (state.activeProject?.id !== id && !confirmDraftOverwrite("切换项目")) {
+    renderProjects();
+    setStatus("已取消切换项目。请先保存当前正文，或确认覆盖后再切换。", "error");
+    return;
+  }
   const data = await api(`/api/projects/${encodeURIComponent(id)}`);
   state.activeProject = data.project;
   state.files = data.project.files || [];
@@ -2162,7 +2168,7 @@ async function loadProject(id) {
   updateAiModeVisibility();
   renderArchiveAssistantHint();
   el.ideaInput.value = data.project.premise || "";
-  setDraftValue("");
+  setDraftValue("", { source: "切换项目", force: true, markClean: true });
   el.chapterBrief.value = "";
   renderProjects();
   renderFiles();
@@ -2255,16 +2261,25 @@ async function ensureProjectForIdea(idea) {
 async function loadSelectedFile() {
   if (!state.activeProject) return;
   const file = el.fileSelect.value;
+  const previousFile = state.activeFile;
   state.activeFile = file;
   if (!file) {
-    setDraftValue("");
+    if (!setDraftValue("", { source: "切换到新章节", markClean: true })) {
+      state.activeFile = previousFile;
+      el.fileSelect.value = previousFile || "";
+      return;
+    }
     setStatus("已切换到新章节。");
     return;
   }
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/file?path=${encodeURIComponent(file)}`);
-    setDraftValue(data.content);
+    if (!setDraftValue(data.content, { source: `打开文件 ${file}`, markClean: true })) {
+      state.activeFile = previousFile;
+      el.fileSelect.value = previousFile || "";
+      return;
+    }
     parseChapterFromFile(file);
     setStatus(`已打开：${file}`);
     renderFileBrowser();
@@ -2306,6 +2321,7 @@ async function saveChapter() {
     await loadProject(state.activeProject.id);
     state.activeFile = savedFile;
     el.fileSelect.value = savedFile;
+    setDraftValue(body.content, { force: true, markClean: true });
     renderFileBrowser();
     renderChapterBoard();
     state.lastAutosaveKey = autosaveKey();
@@ -2361,7 +2377,7 @@ async function runPipeline() {
     if (data.chapterFile && state.files.includes(data.chapterFile)) {
       await openFileByPath(data.chapterFile);
     } else {
-      setDraftValue(data.output.trim());
+      setDraftValue(data.output.trim(), { source: "写入生成结果" });
     }
     setPipelineProgress("memory", "done");
     setStatus(`这一章已生成。最终章节：${data.chapterFile || "未保存"}。阶段产物：${data.runtimeDir}`);
@@ -2394,7 +2410,7 @@ async function incubateIdea() {
       })
     });
     await loadProject(state.activeProject.id);
-    setDraftValue(data.output.trim());
+    setDraftValue(data.output.trim(), { source: "写入立项建议" });
     state.activeFile = data.file;
     el.fileSelect.value = "";
     state.incubationResult = {
@@ -2499,7 +2515,7 @@ async function absorbKnowledge() {
     if (data.file && state.files.includes(data.file)) {
       await openFileByPath(data.file);
     } else {
-      setDraftValue(data.output || "");
+      setDraftValue(data.output || "", { source: "写入资料分析结果" });
     }
     setStatus(`资料吸收完成：已更新项目能力包，并写入 ${data.file}`);
   } catch (error) {
@@ -2573,9 +2589,9 @@ async function pollCodexRun(runId, preferredFile = "") {
       const data = await api(`/api/projects/${encodeURIComponent(projectId)}/codex-run/${encodeURIComponent(runId)}`);
       const status = data.status.status;
       if (data.final?.trim()) {
-        setDraftValue(data.final.trim());
+        setDraftValue(data.final.trim(), { source: "写入 Codex 最终结果" });
       } else if (data.log?.trim()) {
-        setDraftValue(data.log.trim());
+        setDraftValue(data.log.trim(), { source: "写入 Codex 日志" });
       }
       setStatus(`Codex 运行状态：${status}。runId：${runId}`);
       if (status === "running" && attempts < 240) {
@@ -2651,7 +2667,7 @@ async function copyProjectPath() {
     await navigator.clipboard.writeText(path);
     setStatus(`已复制项目路径：${path}`);
   } catch {
-    setDraftValue(path);
+    setDraftValue(path, { source: "写入项目路径" });
     setStatus("浏览器未允许写入剪贴板，已把项目路径放到正文框。");
   }
 }
@@ -2832,10 +2848,26 @@ function renderMarkdownPreview() {
   el.draftPreview.innerHTML = markdownToHtml(el.draft.value);
 }
 
-function setDraftValue(value = "") {
-  if (!el.draft) return;
-  el.draft.value = value || "";
+function isDraftDirty() {
+  return Boolean(el.draft && el.draft.value !== (state.draftBaseline || ""));
+}
+
+function confirmDraftOverwrite(source = "新内容") {
+  if (!isDraftDirty()) return true;
+  return confirm(`正文编辑区有未保存或未确认的内容。\n\n继续${source}会覆盖当前中间文本。是否继续？`);
+}
+
+function setDraftValue(value = "", options = {}) {
+  if (!el.draft) return false;
+  const nextValue = value || "";
+  if (!options.force && nextValue !== el.draft.value && !confirmDraftOverwrite(options.source || "写入新内容")) {
+    setStatus("已取消覆盖正文。请先保存当前文本，或确认后再执行。", "error");
+    return false;
+  }
+  el.draft.value = nextValue;
+  if (options.markClean) state.draftBaseline = nextValue;
   renderMarkdownPreview();
+  return true;
 }
 
 function setEditorMode(mode = "edit") {
@@ -2947,7 +2979,7 @@ async function loadChapterFromBoard(chapter) {
   } else {
     state.activeFile = "";
     el.fileSelect.value = "";
-    setDraftValue("");
+    setDraftValue("", { source: "载入章节规划", markClean: true });
     setStatus(`已载入第 ${chapter.no} 章规划。可以补充“这一章想写什么”后点击生成。`);
   }
   renderChapterBoard();

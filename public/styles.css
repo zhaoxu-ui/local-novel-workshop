@@ -731,6 +731,16 @@ label.needs-attention,
   display: grid;
 }
 
+.editor-section > .one-stop-guide,
+.editor-section > .next-step-banner,
+.editor-section > .path-readiness-panel,
+.editor-section > .project-dashboard,
+.editor-section > .incubation-result-panel,
+.editor-section > .first-chapter-starter,
+.editor-section > .quick-open {
+  display: none !important;
+}
+
 .editor-section {
   display: grid;
   grid-auto-rows: max-content;
@@ -1532,6 +1542,54 @@ label.needs-attention,
   box-shadow: var(--shadow);
 }
 
+.text-actions-panel {
+  gap: 14px;
+}
+
+.text-actions-panel .editor-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.text-actions-panel .editor-actions button {
+  width: 100%;
+}
+
+.text-actions-panel .writing-quality-loop,
+.text-actions-panel .pipeline-dock,
+.text-actions-panel .publish-center {
+  grid-template-columns: 1fr;
+  padding: 12px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.text-actions-panel .writing-quality-loop button,
+.text-actions-panel .pipeline-dock button,
+.text-actions-panel .publish-center button {
+  width: 100%;
+}
+
+.text-actions-panel .writing-quality-loop h2,
+.text-actions-panel .pipeline-dock h2,
+.text-actions-panel .publish-center h2 {
+  font-size: 15px;
+}
+
+.text-actions-panel .pipeline-progress {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.text-actions-panel .operation-feedback {
+  position: static;
+}
+
+.autosave-line {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .writing-quality-loop h2 {
   margin: 2px 0 6px;
   font-size: 17px;
@@ -1715,10 +1773,11 @@ label.needs-attention,
 }
 
 .advanced-tools-collapsed .toolbox-tabs,
-.advanced-tools-collapsed [data-tool-panel]:not([data-tool-panel="chapter-board"]):not([data-tool-panel="sync-review"]) {
+.advanced-tools-collapsed [data-tool-panel]:not([data-tool-panel="text-actions"]):not([data-tool-panel="chapter-board"]):not([data-tool-panel="sync-review"]) {
   display: none !important;
 }
 
+.advanced-tools-collapsed [data-tool-panel="text-actions"],
 .advanced-tools-collapsed [data-tool-panel="chapter-board"],
 .advanced-tools-collapsed [data-tool-panel="sync-review"] {
   display: grid;
