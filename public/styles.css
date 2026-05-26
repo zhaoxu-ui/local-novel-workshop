@@ -1871,6 +1871,127 @@ label.needs-attention,
   color: var(--danger);
 }
 
+.operation-feedback {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+}
+
+.operation-feedback > div {
+  display: grid;
+  gap: 4px;
+}
+
+.operation-feedback strong {
+  font-size: 14px;
+}
+
+.operation-feedback p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.operation-feedback > span {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  padding: 6px 9px;
+  border: 1px solid #cfe5df;
+  border-radius: 999px;
+  background: #f4fbf8;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.operation-feedback.running {
+  border-color: #b8dcd6;
+  background: #fbfffd;
+}
+
+.operation-feedback.error {
+  border-color: #f2b8b5;
+  background: var(--danger-soft);
+}
+
+.operation-feedback.success {
+  border-color: #bfe8d2;
+  background: #f7fffa;
+}
+
+.operation-feedback ol {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.operation-feedback li {
+  display: grid;
+  grid-template-columns: auto minmax(90px, 0.25fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-soft);
+  font-size: 12px;
+}
+
+.operation-feedback li.error {
+  border-color: #f2b8b5;
+  background: var(--danger-soft);
+}
+
+.operation-feedback li span {
+  color: var(--muted);
+}
+
+.operation-feedback li strong {
+  font-size: 12px;
+}
+
+.operation-feedback li em {
+  overflow: hidden;
+  color: var(--muted);
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.is-loading {
+  position: relative;
+  opacity: 1;
+  cursor: progress;
+}
+
+button.is-loading::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  margin-right: 7px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: action-spin 0.8s linear infinite;
+}
+
+@keyframes action-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .file-browser,
 .file-checks,
 .chapter-board,

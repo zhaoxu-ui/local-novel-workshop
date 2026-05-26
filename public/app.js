@@ -28,6 +28,16 @@ const state = {
   snapshots: [],
   incubationResult: null,
   editorMode: "edit",
+  operation: {
+    busy: false,
+    activeButton: null,
+    activeLabel: "",
+    title: "等待操作",
+    detail: "点击生成、保存、质检或发布按钮后，这里会显示执行进度和结果位置。",
+    location: "结果位置：暂无",
+    type: "idle",
+    history: []
+  },
   pipelineProgress: {
     step: "",
     status: "idle"
@@ -150,6 +160,11 @@ const el = {
   preflightProjectAction: document.querySelector("#preflightProjectAction"),
   preflightBriefAction: document.querySelector("#preflightBriefAction"),
   preflightAiAction: document.querySelector("#preflightAiAction"),
+  operationFeedback: document.querySelector("#operationFeedback"),
+  operationTitle: document.querySelector("#operationTitle"),
+  operationDetail: document.querySelector("#operationDetail"),
+  operationLocation: document.querySelector("#operationLocation"),
+  operationHistory: document.querySelector("#operationHistory"),
   toggleQuickOpen: document.querySelector("#toggleQuickOpen"),
   quickOpenBody: document.querySelector("#quickOpenBody"),
   toggleAdvancedTools: document.querySelector("#toggleAdvancedTools"),
@@ -256,6 +271,137 @@ const FLOW_STAGE_DETAIL_TABS = {
 function setStatus(message, type = "") {
   el.status.textContent = message;
   el.status.className = `status ${type}`.trim();
+  updateOperationDetail(message, type);
+}
+
+function buttonText(button) {
+  return String(button?.dataset.originalLabel || button?.textContent || "").trim().replace(/\s+/g, " ") || "执行操作";
+}
+
+function operationResultLocation(button) {
+  const id = button?.id || "";
+  const dataAction = button?.dataset || {};
+  const map = {
+    runPipeline: "结果位置：正文编辑器、运行时产物、右侧“确认本章记忆”。",
+    smartPrimaryAction: "结果位置：根据当前步骤显示在正文编辑器、项目方案或任务中心。",
+    smartPublishAction: "结果位置：发布中心、右侧“发布准备”、项目文件。",
+    incubateIdea: "结果位置：立项建议卡片、正文预览区、项目文件。",
+    incubationRerun: "结果位置：立项建议卡片和正文预览区。",
+    absorbKnowledge: "结果位置：资料投喂报告、项目能力包、任务中心。",
+    analyzeStyleProfile: "结果位置：文风模仿档案、风格记忆、右侧风格实验室。",
+    runWritingQualityLoop: "结果位置：下方写作质检卡片。",
+    runPublishCenter: "结果位置：下方发布中心卡片和项目文件。",
+    saveChapter: "结果位置：当前章节文件、章节看板、版本记录。",
+    saveChapterPlan: "结果位置：章节看板。",
+    compareLatestVersion: "结果位置：右侧修订版本结果。",
+    runQualityCheck: "结果位置：右侧质量面板和质检报告。",
+    runAiQualityCheck: "结果位置：右侧质量面板、任务中心或 AI 报告。",
+    runProseQualityReview: "结果位置：右侧质量面板和文稿增强报告。",
+    createRevisionTask: "结果位置：右侧修订发布面板和修订任务单。",
+    runRevisionTask: "结果位置：右侧修订发布面板、修订稿、任务中心。",
+    runBatchQuality: "结果位置：右侧修订发布面板和批量质检报告。",
+    analyzeConflicts: "结果位置：右侧修订发布面板和记忆冲突报告。",
+    generatePublishMaterials: "结果位置：右侧发布准备面板和发布资料包。",
+    runFinalPublishCheck: "结果位置：右侧发布准备面板和发布前总检查报告。",
+    generateReleasePackage: "结果位置：右侧发布准备面板和发布包清单。",
+    createReleaseBackup: "结果位置：右侧发布准备面板和完整备份包。",
+    generateReleaseNotes: "结果位置：右侧发布准备面板和发布说明。",
+    refreshTaskCenter: "结果位置：右侧任务中心列表。",
+    runGlobalSearch: "结果位置：右侧全局搜索结果。",
+    runNarrativeRadar: "结果位置：右侧叙事雷达。",
+    createSnapshot: "结果位置：右侧快照列表。",
+    runDoctor: "结果位置：右侧系统诊断面板。",
+    runMemorySchemaCheck: "结果位置：右侧系统诊断面板。",
+    generateDiagnosticsReport: "结果位置：右侧系统维护面板和诊断报告。",
+    openProjectFolder: "结果位置：系统文件管理器；状态栏会显示路径。",
+    copyProjectPath: "结果位置：系统剪贴板；失败时会放到正文编辑器。",
+    exportTxt: "结果位置：项目发布目录和文件列表。",
+    exportMd: "结果位置：项目发布目录和文件列表。",
+    createProject: "结果位置：左侧项目列表和当前项目。",
+    createDemoProject: "结果位置：左侧项目列表和当前项目。",
+    saveAiSettings: "结果位置：当前项目配置。",
+    saveArchiveAssistant: "结果位置：当前项目档案助手。",
+    openArchiveAssistant: "结果位置：正文编辑器打开助手档案。",
+    previewMemoryRecall: "结果位置：右侧本章召回面板。",
+    saveStoryBibleEntry: "结果位置：右侧故事圣经。",
+    refreshStoryBible: "结果位置：右侧故事圣经。",
+    cloneProject: "结果位置：左侧项目列表。",
+    exportPortableProject: "结果位置：右侧系统维护面板和迁移包。",
+    repairMemoryJson: "结果位置：右侧系统维护面板和修复报告。",
+    runProjectIntegrityCheck: "结果位置：右侧系统维护面板和完整性报告。"
+  };
+  if (dataAction.openFile) return "结果位置：正文编辑器会打开所选文件。";
+  if (dataAction.openLatest) return "结果位置：正文编辑器会打开该目录下最新产物。";
+  if (dataAction.toolboxGroup) return "结果位置：右侧辅助面板切换到对应工具组。";
+  return map[id] || "结果位置：状态栏、正文编辑器、右侧辅助面板或项目文件。";
+}
+
+function renderOperationFeedback() {
+  if (!el.operationFeedback) return;
+  const op = state.operation;
+  el.operationFeedback.className = `operation-feedback ${op.type || "idle"} ${op.busy ? "running" : ""}`.trim();
+  if (el.operationTitle) el.operationTitle.textContent = op.title || "等待操作";
+  if (el.operationDetail) el.operationDetail.textContent = op.detail || "点击按钮后显示执行进度。";
+  if (el.operationLocation) el.operationLocation.textContent = op.location || "结果位置：暂无";
+  if (el.operationHistory) {
+    el.operationHistory.innerHTML = (op.history || []).slice(0, 5).map((item) => `
+      <li class="${escapeAttr(item.type || "")}">
+        <span>${escapeHtml(item.time || "")}</span>
+        <strong>${escapeHtml(item.title || "")}</strong>
+        <em>${escapeHtml(item.detail || "")}</em>
+      </li>
+    `).join("");
+  }
+}
+
+function beginOperationFeedback(button = null) {
+  const activeButton = button || state.operation.activeButton || state.pendingActionButton || null;
+  const label = buttonText(activeButton);
+  state.operation.busy = true;
+  state.operation.activeButton = activeButton;
+  state.operation.activeLabel = label;
+  state.operation.title = `${label} 执行中`;
+  state.operation.detail = "请求已发出，正在等待结果...";
+  state.operation.location = operationResultLocation(activeButton);
+  state.operation.type = "running";
+  if (activeButton) {
+    activeButton.dataset.originalLabel = label;
+    activeButton.classList.add("is-loading");
+    activeButton.setAttribute("aria-busy", "true");
+    activeButton.textContent = "执行中...";
+  }
+  renderOperationFeedback();
+}
+
+function updateOperationDetail(message, type = "") {
+  if (!el.operationFeedback || !message) return;
+  if (!state.operation.busy && !type) return;
+  state.operation.detail = message;
+  if (type === "error") state.operation.type = "error";
+  renderOperationFeedback();
+}
+
+function finishOperationFeedback(type = "success") {
+  const op = state.operation;
+  const finalType = op.type === "error" ? "error" : type;
+  if (op.activeButton) {
+    op.activeButton.classList.remove("is-loading");
+    op.activeButton.removeAttribute("aria-busy");
+    op.activeButton.textContent = op.activeButton.dataset.originalLabel || op.activeLabel || op.activeButton.textContent;
+  }
+  op.busy = false;
+  op.type = finalType;
+  op.title = finalType === "error" ? `${op.activeLabel || "操作"} 未完成` : `${op.activeLabel || "操作"} 已完成`;
+  op.history.unshift({
+    type: finalType,
+    title: op.activeLabel || "操作",
+    detail: op.detail || "",
+    time: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+  });
+  op.history = op.history.slice(0, 6);
+  op.activeButton = null;
+  op.activeLabel = "";
+  renderOperationFeedback();
 }
 
 function actionableErrorMessage(error) {
@@ -2547,8 +2693,14 @@ async function saveArchiveAssistant() {
 }
 
 function setBusy(isBusy) {
+  if (isBusy) {
+    beginOperationFeedback();
+  } else {
+    finishOperationFeedback();
+  }
   for (const button of document.querySelectorAll("button")) {
-    button.disabled = isBusy;
+    const isActive = button === state.operation.activeButton;
+    button.disabled = isBusy && !isActive;
   }
 }
 
@@ -4362,6 +4514,17 @@ async function openLatestByPrefix(prefix) {
 function on(node, event, handler) {
   if (node) node.addEventListener(event, handler);
 }
+
+document.addEventListener("click", (event) => {
+  const button = event.target?.closest?.("button");
+  if (!button || button.disabled) return;
+  state.pendingActionButton = button;
+  window.setTimeout(() => {
+    if (!state.operation.busy && state.pendingActionButton === button) {
+      state.pendingActionButton = null;
+    }
+  }, 800);
+}, true);
 
 on(el.refreshProjects, "click", loadProjects);
 on(el.toggleLeftPane, "click", () => togglePane("left"));
