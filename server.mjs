@@ -2352,6 +2352,69 @@ ${analysis.suggestions.length ? analysis.suggestions.map((item) => `- ${item}`).
   return { reportFile, targetFile, analysis };
 }
 
+async function runWritingQualityLoop(projectId, { file = "", text = "" } = {}) {
+  const targetFile = file || (await latestProjectFile(projectId, "01_正文/第")) || "";
+  const sourceText = text || (targetFile ? await readProjectFile(projectId, targetFile).catch(() => "") : "");
+  const prose = analyzeProseQuality(sourceText);
+  const style = await readProjectJsonFile(projectId, "04_连续性/style_memory.json", { version: 1 });
+  const characters = await readProjectJsonFile(projectId, "04_连续性/character_state.json", { version: 1, characters: [] });
+  const styleProfile = style.imitationProfile || {};
+  const textureHits = (style.preferredTextures || styleProfile.texture || []).filter((term) => sourceText.includes(term));
+  const bannedHits = (style.bannedPatterns || styleProfile.avoid || []).filter((term) => sourceText.includes(term));
+  const knownCharacters = (characters.characters || []).filter((item) => item.name || item.id);
+  const mentionedCharacters = knownCharacters.filter((item) => sourceText.includes(item.name || item.id));
+  const absentMainCharacters = knownCharacters.slice(0, 5).filter((item) => !sourceText.includes(item.name || item.id));
+  const styleAlignment = Math.max(0, Math.min(100, 72 + textureHits.length * 6 - bannedHits.length * 8));
+  const characterConsistency = knownCharacters.length
+    ? Math.max(0, Math.min(100, 62 + mentionedCharacters.length * 10 - absentMainCharacters.length * 5))
+    : 70;
+  const antiAiScore = prose.scores.humanScore;
+  const suggestions = [
+    ...prose.suggestions,
+    ...(styleAlignment < 72 ? ["把文风档案里的节奏、细节偏好和禁用表达写入本章修订要求。"] : []),
+    ...(characterConsistency < 72 ? ["核对人物状态：本章出现的人物目标、情绪和位置需要与长期记忆一致。"] : []),
+    ...(bannedHits.length ? [`删除或替换文风禁用表达：${bannedHits.slice(0, 6).join("、")}。`] : [])
+  ];
+  const reportFile = `06_审稿/写作质检闭环_${timestampId()}.md`;
+  await writeProjectFile(projectId, reportFile, `# 写作质检闭环
+
+生成时间：${new Date().toISOString()}
+目标文件：${targetFile || "手动文本"}
+
+## 总览
+
+- 反 AI 味：${antiAiScore}
+- 文风贴合：${styleAlignment}
+- 人物一致性：${characterConsistency}
+
+## 文风模仿
+
+- 命中文风细节：${textureHits.join("、") || "暂无"}
+- 命中禁用表达：${bannedHits.join("、") || "暂无"}
+
+## 人物一致性
+
+- 已出现人物：${mentionedCharacters.map((item) => item.name || item.id).join("、") || "暂无"}
+- 需要留意：${absentMainCharacters.map((item) => item.name || item.id).join("、") || "暂无"}
+
+## 修订建议
+
+${suggestions.length ? suggestions.map((item) => `- ${item}`).join("\n") : "- 当前文本可以进入人工细修。"}
+`);
+  return {
+    reportFile,
+    targetFile,
+    scores: { antiAiScore, styleAlignment, characterConsistency },
+    prose,
+    style: { textureHits, bannedHits },
+    characters: {
+      mentioned: mentionedCharacters.map((item) => item.name || item.id),
+      watch: absentMainCharacters.map((item) => item.name || item.id)
+    },
+    suggestions
+  };
+}
+
 async function exportPortableProject(projectId) {
   const meta = JSON.parse(await fs.readFile(projectPath(projectId, "project.json"), "utf8"));
   const stamp = timestampId();
@@ -6266,6 +6329,19 @@ async function routeApi(req, res, url) {
         kind: "quality",
         status: "completed",
         title: "文稿质量增强",
+        detail: result.reportFile,
+        files: [result.reportFile, result.targetFile].filter(Boolean)
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
+    if (req.method === "POST" && parts[3] === "writing-quality-loop") {
+      const body = await readBody(req);
+      const result = await runWritingQualityLoop(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "quality",
+        status: "completed",
+        title: "写作质检闭环",
         detail: result.reportFile,
         files: [result.reportFile, result.targetFile].filter(Boolean)
       });

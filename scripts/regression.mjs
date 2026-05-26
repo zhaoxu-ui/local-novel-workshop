@@ -95,6 +95,13 @@ try {
     method: "POST",
     body: JSON.stringify({ file: "01_正文/第001章_测试章节.md" })
   });
+  const writingQualityLoop = await api(`/api/projects/${encodeURIComponent(id)}/writing-quality-loop`, {
+    method: "POST",
+    body: JSON.stringify({ file: "01_正文/第001章_测试章节.md" })
+  });
+  if (!writingQualityLoop.scores?.styleAlignment || !writingQualityLoop.reportFile?.includes("写作质检闭环")) {
+    throw new Error("写作质检闭环未返回文风贴合评分或报告");
+  }
   const releaseBackup = await api(`/api/projects/${encodeURIComponent(id)}/release-backup`, {
     method: "POST",
     body: JSON.stringify({})

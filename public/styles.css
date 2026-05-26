@@ -1277,6 +1277,63 @@ label.needs-attention,
   padding: 16px 18px;
 }
 
+.writing-quality-loop {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.22fr);
+  gap: 14px;
+  align-items: start;
+  padding: 16px;
+  border: 1px solid #d8e4df;
+  border-radius: var(--radius);
+  background: #fff;
+  box-shadow: var(--shadow);
+}
+
+.writing-quality-loop h2 {
+  margin: 2px 0 6px;
+  font-size: 17px;
+}
+
+.writing-quality-loop p:last-child {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.writing-quality-result {
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+}
+
+.quality-score-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.quality-score-row span,
+.quality-suggestions p {
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.quality-score-row strong {
+  display: block;
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.quality-suggestions {
+  display: grid;
+  gap: 8px;
+}
+
 .editor-actions {
   display: flex;
   align-items: center;
@@ -2966,12 +3023,17 @@ label.needs-attention,
   .path-readiness-panel,
   .project-dashboard,
   .first-chapter-starter,
+  .writing-quality-loop,
   .pipeline-progress {
     grid-template-columns: 1fr;
   }
 
   .path-readiness-items,
   .dashboard-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .quality-score-row {
     grid-template-columns: 1fr;
   }
 

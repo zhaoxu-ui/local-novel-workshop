@@ -272,6 +272,15 @@
               正文 / 修订结果
               <textarea id="draft" spellcheck="false" placeholder="选择项目后，可以在这里写草稿，或点击“生成这一章”。"></textarea>
             </label>
+            <section id="writingQualityLoop" class="writing-quality-loop" aria-label="写作质检闭环">
+              <div>
+                <p class="eyebrow">写作质检</p>
+                <h2 id="writingQualityTitle">反 AI 味 · 文风 · 人物一致性</h2>
+                <p id="writingQualityText">生成或粘贴正文后，一键检查是否像真人写作、是否贴合文风档案、人物状态是否前后一致。</p>
+              </div>
+              <button id="runWritingQualityLoop" type="button">检查这一章</button>
+              <div id="writingQualityResult" class="writing-quality-result"></div>
+            </section>
             <div class="editor-actions">
               <button id="saveChapterPlan">保存章节规划</button>
               <button id="saveChapter">保存为章节</button>

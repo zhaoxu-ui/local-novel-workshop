@@ -96,6 +96,11 @@ const el = {
   fileSelect: document.querySelector("#fileSelect"),
   chapterBrief: document.querySelector("#chapterBrief"),
   draft: document.querySelector("#draft"),
+  writingQualityLoop: document.querySelector("#writingQualityLoop"),
+  writingQualityTitle: document.querySelector("#writingQualityTitle"),
+  writingQualityText: document.querySelector("#writingQualityText"),
+  writingQualityResult: document.querySelector("#writingQualityResult"),
+  runWritingQualityLoop: document.querySelector("#runWritingQualityLoop"),
   smartGuideTitle: document.querySelector("#smartGuideTitle"),
   smartGuideText: document.querySelector("#smartGuideText"),
   smartPrimaryAction: document.querySelector("#smartPrimaryAction"),
@@ -1036,6 +1041,56 @@ function useFirstChapterStarter() {
   }
   renderSmartGuide();
   return guideToChapterBrief("已把第一章启动卡填入“这一章想写什么”，可以继续补充细节。");
+}
+
+function renderWritingQualityLoop(result = null) {
+  if (!el.writingQualityResult) return;
+  if (!result) {
+    el.writingQualityResult.innerHTML = "";
+    return;
+  }
+  const scores = result.scores || {};
+  el.writingQualityResult.innerHTML = `
+    <div class="quality-score-row">
+      <span>反 AI 味 <strong>${escapeHtml(scores.antiAiScore ?? "-")}</strong></span>
+      <span>文风贴合 <strong>${escapeHtml(scores.styleAlignment ?? "-")}</strong></span>
+      <span>人物一致 <strong>${escapeHtml(scores.characterConsistency ?? "-")}</strong></span>
+    </div>
+    <div class="quality-suggestions">
+      ${(result.suggestions || ["当前文本可以进入人工细修。"]).slice(0, 4).map((item) => `<p>${escapeHtml(item)}</p>`).join("")}
+    </div>
+    <button type="button" data-open-quality-report="${escapeAttr(result.reportFile || "")}">打开质检报告</button>
+  `;
+  el.writingQualityResult.querySelector("[data-open-quality-report]")?.addEventListener("click", (event) => {
+    const file = event.currentTarget.dataset.openQualityReport;
+    if (file) openFileByPath(file);
+  });
+}
+
+async function runWritingQualityLoop() {
+  if (!state.activeProject) return guideToProjectStart();
+  const text = el.draft?.value.trim() || "";
+  const file = state.activeFile || "";
+  if (!text && !file) return guideToChapterBrief("先生成、粘贴或打开一章正文，再运行写作质检。");
+  setBusy(true);
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/writing-quality-loop`, {
+      method: "POST",
+      body: JSON.stringify({ file, text })
+    });
+    if (data.project) {
+      state.activeProject = data.project;
+      state.files = data.project.files || [];
+    }
+    renderWritingQualityLoop(data);
+    renderFiles();
+    await refreshTaskCenter();
+    setStatus(`写作质检完成：${data.reportFile}`);
+  } catch (error) {
+    setStatus(actionableErrorMessage(error), "error");
+  } finally {
+    setBusy(false);
+  }
 }
 
 function compactMarkdownValue(value = "", maxLength = 120) {
@@ -4110,6 +4165,7 @@ on(el.fileSelect, "change", loadSelectedFile);
 on(el.saveChapterPlan, "click", saveChapterPlan);
 on(el.saveChapter, "click", saveChapter);
 on(el.compareLatestVersion, "click", compareLatestVersion);
+on(el.runWritingQualityLoop, "click", runWritingQualityLoop);
 on(el.chapterBrief, "input", scheduleAutosave);
 on(el.chapterBrief, "input", renderSmartGuide);
 on(el.draft, "input", scheduleAutosave);
