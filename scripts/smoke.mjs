@@ -149,6 +149,9 @@ const requiredUiMarkers = [
   ["app.js", "function beginOperationFeedback"],
   ["app.js", "function finishOperationFeedback"],
   ["app.js", "function operationResultLocation"],
+  ["app.js", "function operationContinuityState"],
+  ["app.js", "function openOperationResult"],
+  ["app.js", "function runOperationNext"],
   ["app.js", "如果刚更新过项目，请刷新页面后再试"],
   ["index.html", "id=\"draftPreview\""],
   ["index.html", "id=\"chapterFlowPanel\""],
@@ -157,6 +160,8 @@ const requiredUiMarkers = [
   ["index.html", "id=\"chapterFlowResult\""],
   ["index.html", "id=\"chapterFlowResultAction\""],
   ["index.html", "id=\"operationFeedback\""],
+  ["index.html", "id=\"operationResultAction\""],
+  ["index.html", "id=\"operationNextAction\""],
   ["index.html", "data-tool-panel=\"text-actions\""],
   ["index.html", "data-editor-mode=\"preview\""],
   ["styles.css", ".text-actions-panel"],
@@ -167,6 +172,7 @@ const requiredUiMarkers = [
   ["styles.css", ".beginner-mode .next-step-banner"],
   ["styles.css", ".editor-section > .one-stop-guide"],
   ["styles.css", ".operation-feedback"],
+  ["styles.css", ".operation-feedback-actions"],
   ["styles.css", ".is-loading"],
   ["server.mjs", "cache-control"],
   ["server.mjs", "接口不存在：${req.method} ${url.pathname}"],
@@ -465,10 +471,16 @@ const presentForbiddenUiMarkers = forbiddenUiMarkers
 
 const presentUnguidedGuards = forbiddenUnguidedGuards.filter((marker) => appJs.includes(marker));
 const presentForbiddenLayoutMarkers = forbiddenLayoutMarkers.filter((marker) => stylesCss.includes(marker));
+const toolboxTabsIndex = indexHtml.indexOf("id=\"toolboxTabs\"");
+const operationFeedbackIndex = indexHtml.indexOf("id=\"operationFeedback\"");
+const firstToolPanelIndex = indexHtml.indexOf("data-tool-panel=\"project-status\"");
+const operationFeedbackPlacementOk = toolboxTabsIndex >= 0
+  && operationFeedbackIndex > toolboxTabsIndex
+  && operationFeedbackIndex < firstToolPanelIndex;
 
-if (missing.length || missingScripts.length || missingUiMarkers.length || presentForbiddenUiMarkers.length || presentUnguidedGuards.length || presentForbiddenLayoutMarkers.length) {
-  console.error(JSON.stringify({ ok: false, missing, missingScripts, missingUiMarkers, presentForbiddenUiMarkers, presentUnguidedGuards, presentForbiddenLayoutMarkers }, null, 2));
+if (missing.length || missingScripts.length || missingUiMarkers.length || presentForbiddenUiMarkers.length || presentUnguidedGuards.length || presentForbiddenLayoutMarkers.length || !operationFeedbackPlacementOk) {
+  console.error(JSON.stringify({ ok: false, missing, missingScripts, missingUiMarkers, presentForbiddenUiMarkers, presentUnguidedGuards, presentForbiddenLayoutMarkers, operationFeedbackPlacementOk }, null, 2));
   process.exit(1);
 }
 
-console.log(JSON.stringify({ ok: true, checkedFiles: required.length, checkedScripts: scripts.length, checkedUiMarkers: requiredUiMarkers.length, checkedForbiddenUiMarkers: forbiddenUiMarkers.length, checkedUnguidedGuards: forbiddenUnguidedGuards.length, checkedLayoutGuards: forbiddenLayoutMarkers.length }, null, 2));
+console.log(JSON.stringify({ ok: true, checkedFiles: required.length, checkedScripts: scripts.length, checkedUiMarkers: requiredUiMarkers.length, checkedForbiddenUiMarkers: forbiddenUiMarkers.length, checkedUnguidedGuards: forbiddenUnguidedGuards.length, checkedLayoutGuards: forbiddenLayoutMarkers.length, operationFeedbackPlacementOk }, null, 2));

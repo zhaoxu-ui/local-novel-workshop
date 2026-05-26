@@ -36,6 +36,10 @@ const state = {
     title: "等待操作",
     detail: "点击生成、保存、质检或发布按钮后，这里会显示执行进度和结果位置。",
     location: "结果位置：暂无",
+    resultLabel: "",
+    resultAction: "",
+    nextLabel: "",
+    nextAction: "",
     type: "idle",
     history: []
   },
@@ -172,6 +176,8 @@ const el = {
   operationTitle: document.querySelector("#operationTitle"),
   operationDetail: document.querySelector("#operationDetail"),
   operationLocation: document.querySelector("#operationLocation"),
+  operationResultAction: document.querySelector("#operationResultAction"),
+  operationNextAction: document.querySelector("#operationNextAction"),
   operationHistory: document.querySelector("#operationHistory"),
   toggleQuickOpen: document.querySelector("#toggleQuickOpen"),
   quickOpenBody: document.querySelector("#quickOpenBody"),
@@ -344,6 +350,87 @@ function operationResultLocation(button) {
   return map[id] || "结果位置：状态栏、正文编辑器、右侧辅助面板或项目文件。";
 }
 
+function operationContinuityState(button) {
+  const id = button?.id || "";
+  const dataAction = button?.dataset || {};
+  if (dataAction.openFile || dataAction.openLatest) {
+    return {
+      resultLabel: "查看正文",
+      resultAction: "draft",
+      nextLabel: "继续处理章节",
+      nextAction: "chapter-flow"
+    };
+  }
+  if (dataAction.toolboxGroup) {
+    return {
+      resultLabel: "查看工具",
+      resultAction: `panel:${dataAction.toolboxGroup}:${dataAction.toolPanel || ""}`,
+      nextLabel: "",
+      nextAction: ""
+    };
+  }
+  const map = {
+    refreshProjects: ["查看项目列表", "projects", "选择或创建项目", "projects"],
+    incubateIdea: ["查看立项建议", "draft", "开始第一章", "brief"],
+    runPathReadiness: ["查看路径检查", "smart-result", "处理下一步", "smart-next"],
+    runPipeline: ["查看生成结果", "text-actions", "审核这一章", "quality"],
+    smartPrimaryAction: ["查看当前结果", "smart-result", "继续下一步", "smart-next"],
+    smartPublishAction: ["查看发布检查", "publish-result", "生成发布包", "release-package"],
+    nextStepAction: ["查看当前结果", "smart-result", "继续下一步", "smart-next"],
+    saveChapter: ["查看章节看板", "chapter-board", "审核这一章", "quality"],
+    saveChapterPlan: ["查看章节看板", "chapter-board", "生成正文", "generate"],
+    compareLatestVersion: ["查看版本对照", "revision-result", "选择版本处理", "versions"],
+    refreshVersions: ["查看正文版本", "versions", "对照最新版本", ""],
+    runQualityCheck: ["查看审核结果", "quality-result", "根据审核继续", "after-quality"],
+    runAiQualityCheck: ["查看深度复核", "quality-result", "根据审核继续", "after-quality"],
+    runProseQualityReview: ["查看文稿增强", "quality-result", "生成修订任务", "revision-task"],
+    runWritingQualityLoop: ["查看写作质检", "writing-quality-result", "根据审核继续", "after-quality"],
+    createRevisionTask: ["查看修订任务", "revision-result", "执行修订", "run-revision"],
+    runRevisionTask: ["查看修订结果", "revision-result", "复核修订稿", "quality"],
+    runBatchQuality: ["查看批量质检", "revision-result", "处理问题", "revision-task"],
+    analyzeConflicts: ["查看冲突报告", "revision-result", "生成修复方案", "conflict-repair"],
+    generatePublishMaterials: ["查看发布资料", "publish-result", "发布前总检查", "final-check"],
+    runFinalPublishCheck: ["查看总检查", "publish-result", "生成发布包", "release-package"],
+    generateReleasePackage: ["查看发布包", "publish-result", "创建备份", "release-backup"],
+    createReleaseBackup: ["查看备份结果", "publish-result", "生成发布说明", "release-notes"],
+    generateReleaseNotes: ["查看发布说明", "publish-result", "查看项目文件", "project-files"],
+    runPublishCenter: ["查看发布包", "publish-center-result", "查看项目文件", "project-files"],
+    absorbKnowledge: ["查看资料分析", "knowledge-result", "生成文风档案", "style-lab"],
+    analyzeStyleProfile: ["查看文风档案", "style-result", "预览本章召回", "memory-recall"],
+    previewMemoryRecall: ["查看召回结果", "memory-result", "生成正文", "generate"],
+    saveStoryBibleEntry: ["查看故事圣经", "story-bible", "预览本章召回", "memory-recall"],
+    refreshStoryBible: ["查看故事圣经", "story-bible", "预览本章召回", "memory-recall"],
+    runGlobalSearch: ["查看搜索结果", "global-search", "打开选中文件", ""],
+    refreshTaskCenter: ["查看任务中心", "tasks", "刷新任务", "refresh-tasks"],
+    runNarrativeRadar: ["查看创作雷达", "narrative-radar", "处理薄弱项", "smart-next"],
+    createSnapshot: ["查看保险箱", "snapshots", "继续当前操作", "chapter-flow"],
+    runDoctor: ["查看配置诊断", "doctor", "处理诊断问题", "doctor"],
+    runMemorySchemaCheck: ["查看校验结果", "doctor", "生成诊断报告", "diagnostics"],
+    generateDiagnosticsReport: ["查看诊断报告", "maintenance", "导出迁移包", "portable-export"],
+    saveModelPreset: ["查看项目维护", "maintenance", "继续写作", "chapter-flow"],
+    cloneProject: ["查看项目列表", "projects", "打开克隆项目", "projects"],
+    exportPortableProject: ["查看迁移包", "maintenance", "创建备份", "release-backup"],
+    repairMemoryJson: ["查看修复报告", "maintenance", "完整性检查", "integrity-check"],
+    runProjectIntegrityCheck: ["查看完整性报告", "maintenance", "生成诊断报告", "diagnostics"],
+    createProject: ["查看新项目", "projects", "填写本章想法", "brief"],
+    createDemoProject: ["查看演示项目", "projects", "打开章节看板", "chapter-board"],
+    saveAiSettings: ["查看 AI 配置", "ai-config", "诊断配置", "doctor"],
+    saveArchiveAssistant: ["查看档案助手", "archive-assistant", "打开助手档案", "archive-file"],
+    openArchiveAssistant: ["查看助手档案", "draft", "继续写作", "chapter-flow"],
+    openProjectFolder: ["查看项目文件", "project-files", "继续写作", "chapter-flow"],
+    copyProjectPath: ["查看项目文件", "project-files", "继续写作", "chapter-flow"],
+    exportTxt: ["查看导出结果", "project-files", "生成发布资料", "publish-materials"],
+    exportMd: ["查看导出结果", "project-files", "生成发布资料", "publish-materials"]
+  };
+  const item = map[id] || ["查看结果", "smart-result", "继续下一步", "smart-next"];
+  return {
+    resultLabel: item[0],
+    resultAction: item[1],
+    nextLabel: item[2],
+    nextAction: item[3]
+  };
+}
+
 function renderOperationFeedback() {
   if (!el.operationFeedback) return;
   const op = state.operation;
@@ -351,6 +438,16 @@ function renderOperationFeedback() {
   if (el.operationTitle) el.operationTitle.textContent = op.title || "等待操作";
   if (el.operationDetail) el.operationDetail.textContent = op.detail || "点击按钮后显示执行进度。";
   if (el.operationLocation) el.operationLocation.textContent = op.location || "结果位置：暂无";
+  if (el.operationResultAction) {
+    el.operationResultAction.hidden = !op.resultAction;
+    el.operationResultAction.textContent = op.resultLabel || "查看结果";
+    el.operationResultAction.dataset.operationResult = op.resultAction || "";
+  }
+  if (el.operationNextAction) {
+    el.operationNextAction.hidden = !op.nextAction;
+    el.operationNextAction.textContent = op.nextLabel || "下一步";
+    el.operationNextAction.dataset.operationNext = op.nextAction || "";
+  }
   if (el.operationHistory) {
     el.operationHistory.innerHTML = (op.history || []).slice(0, 5).map((item) => `
       <li class="${escapeAttr(item.type || "")}">
@@ -365,13 +462,20 @@ function renderOperationFeedback() {
 function beginOperationFeedback(button = null) {
   const activeButton = button || state.operation.activeButton || state.pendingActionButton || null;
   const label = buttonText(activeButton);
+  const continuity = operationContinuityState(activeButton);
   state.operation.busy = true;
   state.operation.activeButton = activeButton;
   state.operation.activeLabel = label;
   state.operation.title = `${label} 执行中`;
   state.operation.detail = "请求已发出，正在等待结果...";
   state.operation.location = operationResultLocation(activeButton);
+  state.operation.resultLabel = continuity.resultLabel || "";
+  state.operation.resultAction = continuity.resultAction || "";
+  state.operation.nextLabel = continuity.nextLabel || "";
+  state.operation.nextAction = continuity.nextAction || "";
   state.operation.type = "running";
+  state.layout.rightCollapsed = false;
+  renderLayoutState();
   if (activeButton) {
     activeButton.dataset.originalLabel = label;
     activeButton.classList.add("is-loading");
@@ -410,6 +514,121 @@ function finishOperationFeedback(type = "success") {
   op.activeButton = null;
   op.activeLabel = "";
   renderOperationFeedback();
+}
+
+function openOperationPanel(group, panelId, message = "") {
+  state.layout.rightCollapsed = false;
+  if (group !== "write") state.layout.advancedToolsCollapsed = false;
+  setToolboxGroup(group);
+  if (panelId) setActiveToolPanel(panelId);
+  renderLayoutState();
+  if (message) setStatus(message);
+}
+
+function openOperationResult(action) {
+  const target = action || el.operationResultAction?.dataset.operationResult || "";
+  if (!target) return;
+  if (target.startsWith("panel:")) {
+    const [, group, panel] = target.split(":");
+    return openOperationPanel(group || "write", panel || "", "已打开对应工具面板。");
+  }
+  if (target === "draft") {
+    setEditorMode("edit");
+    el.draft?.focus();
+    return setStatus("结果在中间正文编辑区。");
+  }
+  if (target === "smart-result") return openChapterFlowResult(el.chapterFlowResultAction?.dataset.chapterFlowResult || "text-actions");
+  if (target === "text-actions") return openOperationPanel("write", "text-actions", "生成进度、执行结果和常用文本操作在这里。");
+  if (target === "chapter-flow") return openChapterFlowResult("chapter-board");
+  if (target === "chapter-board") return openOperationPanel("write", "chapter-board", "已打开章节看板。");
+  if (target === "quality-result") return openChapterFlowResult("quality-result");
+  if (target === "writing-quality-result") return openOperationPanel("quality", "text-actions", "写作质检结果在“文本操作”的写作质检卡片。");
+  if (target === "revision-result") return openOperationPanel("revision", "revision-publish", "修订、冲突和版本结果在这里。");
+  if (target === "publish-result") return openOperationPanel("publish", "revision-publish", "发布检查、发布资料和发布包结果在这里。");
+  if (target === "publish-center-result") return openOperationPanel("publish", "text-actions", "发布中心结果在“文本操作”的发布中心卡片。");
+  if (target === "knowledge-result") return openOperationPanel("project", "knowledge", "资料投喂结果会写入能力包、工作流和项目文件。");
+  if (target === "style-result") return openOperationPanel("quality", "style-lab", "文风模仿档案在这里。");
+  if (target === "memory-result") return openOperationPanel("quality", "memory-recall", "本章召回结果在这里。");
+  if (target === "story-bible") return openOperationPanel("quality", "story-bible", "故事圣经和长期记忆条目在这里。");
+  if (target === "global-search") return openOperationPanel("write", "global-search", "搜索结果在这里。");
+  if (target === "tasks") return openOperationPanel("write", "task-center", "AI 任务状态、重试和取消在这里。");
+  if (target === "narrative-radar") return openOperationPanel("quality", "narrative-radar", "创作雷达结果在这里。");
+  if (target === "snapshots") return openOperationPanel("revision", "snapshots", "项目快照和恢复入口在这里。");
+  if (target === "doctor") return openOperationPanel("system", "doctor", "配置诊断和系统检查结果在这里。");
+  if (target === "maintenance") return openOperationPanel("system", "project-maintenance", "项目维护结果在这里。");
+  if (target === "project-files") return openOperationPanel("project", "project-files", "项目文件列表在这里。");
+  if (target === "projects") {
+    state.layout.leftCollapsed = false;
+    renderLayoutState();
+    return setStatus("项目列表在左侧。");
+  }
+  if (target === "ai-config") {
+    toggleAiConfig(true);
+    return setStatus("已打开 AI 执行配置。");
+  }
+  if (target === "archive-assistant") return openOperationPanel("project", "archive-assistant", "档案助手设置在这里。");
+}
+
+function setPendingOperationButton(buttonId) {
+  const button = buttonId ? document.getElementById(buttonId) : null;
+  if (button) state.pendingActionButton = button;
+  return button;
+}
+
+function runOperationNext(action) {
+  const target = action || el.operationNextAction?.dataset.operationNext || "";
+  if (!target) return;
+  const buttonMap = {
+    "smart-next": "nextStepAction",
+    "chapter-flow": "chapterFlowPrimary",
+    quality: "runQualityCheck",
+    "revision-task": "createRevisionTask",
+    "run-revision": "runRevisionTask",
+    generate: "runPipeline",
+    "final-check": "runFinalPublishCheck",
+    "release-package": "generateReleasePackage",
+    "release-backup": "createReleaseBackup",
+    "release-notes": "generateReleaseNotes",
+    "publish-materials": "generatePublishMaterials",
+    "memory-recall": "previewMemoryRecall",
+    "refresh-tasks": "refreshTaskCenter",
+    doctor: "runDoctor",
+    diagnostics: "generateDiagnosticsReport",
+    "portable-export": "exportPortableProject",
+    "integrity-check": "runProjectIntegrityCheck"
+  };
+  setPendingOperationButton(buttonMap[target]);
+  if (target === "smart-next") return runNextStepAction();
+  if (target === "chapter-flow") return runChapterFlowAction(el.chapterFlowPrimary?.dataset.chapterFlowAction);
+  if (target === "quality") return runQualityCheck();
+  if (target === "after-quality") {
+    const flow = chapterFlowState();
+    return runChapterFlowAction(flow.primaryAction === "approve" ? "approve" : "planned");
+  }
+  if (target === "revision-task") return createRevisionTaskFromReport();
+  if (target === "run-revision") return runRevisionWorkflow();
+  if (target === "generate") return runPipeline();
+  if (target === "brief") return guideToChapterBrief();
+  if (target === "final-check") return runFinalPublishCheck();
+  if (target === "release-package") return generateReleasePackage();
+  if (target === "release-backup") return createReleaseBackup();
+  if (target === "release-notes") return generateReleaseNotes();
+  if (target === "publish-materials") return generatePublishMaterials();
+  if (target === "style-lab") {
+    openOperationPanel("quality", "style-lab", "请补充样本后生成文风档案。");
+    return;
+  }
+  if (target === "memory-recall") return previewMemoryRecall();
+  if (target === "refresh-tasks") return refreshTaskCenter(true, true);
+  if (target === "doctor") return runDoctor(true, true);
+  if (target === "diagnostics") return generateDiagnosticsReport();
+  if (target === "portable-export") return exportPortableProject();
+  if (target === "integrity-check") return runProjectIntegrityCheck();
+  if (target === "archive-file") return openFileByPath("05_提示词/档案助手.md");
+  if (target === "project-files") return openOperationResult("project-files");
+  if (target === "projects") return openOperationResult("projects");
+  if (target === "versions") return openOperationPanel("revision", "versions", "正文版本在这里。");
+  if (target === "conflict-repair") return openOperationPanel("revision", "revision-publish", "请在冲突报告里选择可修复项。");
 }
 
 function actionableErrorMessage(error) {
@@ -1868,6 +2087,7 @@ function renderNarrativeRadar() {
 
 async function runNarrativeRadar() {
   if (!state.activeProject) return guideToProjectStart();
+  setBusy(true);
   try {
     const file = state.activeFile && state.activeFile.startsWith("01_正文/") && !state.activeFile.startsWith("01_正文/历史版本/")
       ? `?file=${encodeURIComponent(state.activeFile)}`
@@ -1878,14 +2098,17 @@ async function runNarrativeRadar() {
     setStatus(`创作雷达扫描完成：发布准备度 ${Math.round(data.scores?.publishReadiness || 0)}。`);
   } catch (error) {
     setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
   }
 }
 
-async function refreshTaskCenter(showGuide = false) {
+async function refreshTaskCenter(showGuide = false, showOperation = false) {
   if (!state.activeProject) {
     if (showGuide) guideToProjectStart("任务中心会读取当前项目的 Codex 与流水线记录。请先选择或创建项目。");
     return;
   }
+  if (showOperation) setBusy(true);
   try {
     state.taskFilters.kind = el.taskKindFilter?.value || "all";
     state.taskFilters.status = el.taskStatusFilter?.value || "all";
@@ -1898,8 +2121,11 @@ async function refreshTaskCenter(showGuide = false) {
     state.taskSummary = data.summary || null;
     renderTaskCenter();
     renderTaskDetail();
+    if (showOperation) setStatus("任务中心已刷新。");
   } catch (error) {
     setStatus(error.message, "error");
+  } finally {
+    if (showOperation) setBusy(false);
   }
 }
 
@@ -1980,10 +2206,22 @@ function selectedContextFiles() {
   return [...el.contextFiles.querySelectorAll("input:checked")].map((node) => node.value);
 }
 
-async function loadProjects() {
-  const data = await api("/api/projects");
-  state.projects = data.projects;
-  renderProjects();
+async function loadProjects(showOperation = false) {
+  if (showOperation) setBusy(true);
+  try {
+    const data = await api("/api/projects");
+    state.projects = data.projects;
+    renderProjects();
+    if (showOperation) setStatus("项目列表已刷新。");
+  } catch (error) {
+    if (showOperation) {
+      setStatus(error.message, "error");
+      return;
+    }
+    throw error;
+  } finally {
+    if (showOperation) setBusy(false);
+  }
 }
 
 async function loadArchiveAssistants() {
@@ -2078,11 +2316,12 @@ function renderStoryBible() {
   }
 }
 
-async function loadStoryBible(showStatus = false) {
+async function loadStoryBible(showStatus = false, showOperation = false) {
   if (!state.activeProject) {
     if (showStatus) guideToProjectStart("故事圣经属于当前项目。请先选择或创建项目。");
     return;
   }
+  if (showOperation) setBusy(true);
   if (showStatus) setStatus("正在读取故事圣经...");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/story-bible`);
@@ -2095,6 +2334,8 @@ async function loadStoryBible(showStatus = false) {
       el.storyBiblePanel.classList.add("muted");
     }
     if (showStatus) setStatus(error.message, "error");
+  } finally {
+    if (showOperation) setBusy(false);
   }
 }
 
@@ -2668,6 +2909,7 @@ async function exportProject(format) {
 
 async function openProjectFolder() {
   if (!state.activeProject) return guideToProjectStart("先在左侧选择或创建项目，然后再打开项目文件夹。");
+  setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/open-folder`, {
       method: "POST",
@@ -2676,6 +2918,8 @@ async function openProjectFolder() {
     setStatus(data.ok ? `已请求打开项目文件夹：${data.path}` : `${data.message} 路径：${data.path}`);
   } catch (error) {
     setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -2683,17 +2927,21 @@ async function copyProjectPath() {
   if (!state.activeProject) return guideToProjectStart("先在左侧选择或创建项目，然后再复制项目路径。");
   const path = state.activeProject.rootPath || "";
   if (!path) return setStatus("当前项目路径不可用，请刷新项目。", "error");
+  setBusy(true);
   try {
     await navigator.clipboard.writeText(path);
     setStatus(`已复制项目路径：${path}`);
   } catch {
     setDraftValue(path, { source: "写入项目路径" });
     setStatus("浏览器未允许写入剪贴板，已把项目路径放到正文框。");
+  } finally {
+    setBusy(false);
   }
 }
 
 async function saveAiSettings() {
   if (!state.activeProject) return guideToProjectStart("AI 执行配置会保存到当前项目。请先选择或创建项目。");
+  setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/meta`, {
       method: "POST",
@@ -2708,11 +2956,14 @@ async function saveAiSettings() {
     setStatus("AI 执行配置已保存到当前项目。");
   } catch (error) {
     setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
   }
 }
 
 async function saveArchiveAssistant() {
   if (!state.activeProject) return guideToProjectStart("档案助手会绑定到当前项目。请先选择或创建项目。");
+  setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/archive-assistant`, {
       method: "POST",
@@ -2725,6 +2976,8 @@ async function saveArchiveAssistant() {
     setStatus(`档案助手已应用：${data.assistant.name}`);
   } catch (error) {
     setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -4060,17 +4313,21 @@ function renderVersions() {
   }
 }
 
-async function refreshVersions(showGuide = false) {
+async function refreshVersions(showGuide = false, showOperation = false) {
   if (!state.activeProject) {
     if (showGuide) guideToProjectStart("历史版本属于当前项目。请先选择或创建项目。");
     return;
   }
+  if (showOperation) setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/versions`);
     state.versions = data.versions || [];
     renderVersions();
+    if (showOperation) setStatus("正文版本已刷新。");
   } catch (error) {
     setStatus(error.message, "error");
+  } finally {
+    if (showOperation) setBusy(false);
   }
 }
 
@@ -4717,11 +4974,12 @@ async function applySelectedSyncReview(box) {
   }
 }
 
-async function runDoctor(showStatus = true) {
+async function runDoctor(showStatus = true, showOperation = false) {
   if (!state.activeProject) {
     if (showStatus) guideToProjectStart("配置诊断会检查当前项目。请先选择或创建项目。");
     return;
   }
+  if (showOperation) setBusy(true);
   if (showStatus) setStatus("正在诊断项目配置。");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/doctor`);
@@ -4737,11 +4995,14 @@ async function runDoctor(showStatus = true) {
     el.doctorPanel.textContent = error.message;
     el.doctorPanel.classList.add("muted");
     if (showStatus) setStatus(error.message, "error");
+  } finally {
+    if (showOperation) setBusy(false);
   }
 }
 
 async function runMemorySchemaCheck() {
   if (!state.activeProject) return guideToProjectStart();
+  setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/memory-schema-check`);
     if (el.diagnosticsPanel) {
@@ -4764,6 +5025,8 @@ async function runMemorySchemaCheck() {
     setStatus(data.ok ? "长期记忆校验通过。" : "长期记忆校验发现需要处理的问题。");
   } catch (error) {
     setStatus(error.message, "error");
+  } finally {
+    setBusy(false);
   }
 }
 
@@ -4854,7 +5117,7 @@ document.addEventListener("click", (event) => {
   }, 800);
 }, true);
 
-on(el.refreshProjects, "click", loadProjects);
+on(el.refreshProjects, "click", () => loadProjects(true));
 on(el.toggleLeftPane, "click", () => togglePane("left"));
 on(el.toggleRightPane, "click", () => togglePane("right"));
 on(el.toggleNewProject, "click", () => toggleNewProjectPanel());
@@ -4880,6 +5143,8 @@ on(el.preflightAiAction, "click", () => {
   toggleAiConfig(true);
   setStatus("已打开 AI 执行配置。", "");
 });
+on(el.operationResultAction, "click", () => openOperationResult(el.operationResultAction?.dataset.operationResult));
+on(el.operationNextAction, "click", () => runOperationNext(el.operationNextAction?.dataset.operationNext));
 on(el.pipelineRunner, "change", updateAiModeVisibility);
 on(el.openProjectFolder, "click", openProjectFolder);
 on(el.copyProjectPath, "click", copyProjectPath);
@@ -4889,8 +5154,8 @@ on(el.saveArchiveAssistant, "click", saveArchiveAssistant);
 el.openArchiveAssistant.addEventListener("click", () => openFileByPath("05_提示词/档案助手.md"));
 on(el.storyBibleSection, "change", renderStoryBible);
 on(el.saveStoryBibleEntry, "click", saveStoryBibleEntry);
-on(el.refreshStoryBible, "click", () => loadStoryBible(true));
-on(el.runDoctor, "click", () => runDoctor(true));
+on(el.refreshStoryBible, "click", () => loadStoryBible(true, true));
+on(el.runDoctor, "click", () => runDoctor(true, true));
 on(el.runMemorySchemaCheck, "click", runMemorySchemaCheck);
 on(el.generateDiagnosticsReport, "click", generateDiagnosticsReport);
 on(el.createProject, "click", createProject);
@@ -4919,7 +5184,7 @@ on(el.runGlobalSearch, "click", runGlobalSearch);
 on(el.globalSearchInput, "keydown", (event) => {
   if (event.key === "Enter") runGlobalSearch();
 });
-on(el.refreshTaskCenter, "click", () => refreshTaskCenter(true));
+on(el.refreshTaskCenter, "click", () => refreshTaskCenter(true, true));
 on(el.taskKindFilter, "change", () => refreshTaskCenter(true));
 on(el.taskStatusFilter, "change", () => refreshTaskCenter(true));
 on(el.taskAutoRefresh, "change", setTaskAutoRefresh);
@@ -4942,7 +5207,7 @@ on(el.cloneProject, "click", cloneCurrentProject);
 on(el.exportPortableProject, "click", exportPortableProject);
 on(el.repairMemoryJson, "click", repairMemoryJson);
 on(el.runProjectIntegrityCheck, "click", runProjectIntegrityCheck);
-on(el.refreshVersions, "click", () => refreshVersions(true));
+on(el.refreshVersions, "click", () => refreshVersions(true, true));
 on(el.incubateIdea, "click", incubateIdea);
 on(el.absorbKnowledge, "click", absorbKnowledge);
 on(el.analyzeStyleProfile, "click", analyzeStyleProfile);

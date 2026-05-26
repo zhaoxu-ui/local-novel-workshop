@@ -284,6 +284,19 @@
               </div>
             </div>
 
+            <section id="operationFeedback" class="operation-feedback idle" aria-live="polite">
+              <div>
+                <strong id="operationTitle">等待操作</strong>
+                <p id="operationDetail">点击生成、保存、质检或发布按钮后，这里会显示执行进度和结果位置。</p>
+              </div>
+              <span id="operationLocation">结果位置：暂无</span>
+              <div class="operation-feedback-actions">
+                <button id="operationResultAction" type="button" hidden>查看结果</button>
+                <button id="operationNextAction" type="button" hidden>下一步</button>
+              </div>
+              <ol id="operationHistory"></ol>
+            </section>
+
             <section class="panel compact-panel" data-tool-group="project" data-tool-panel="project-status">
               <h2>项目状态</h2>
               <div id="projectStats" class="stat-grid muted">选择项目后显示状态</div>
@@ -341,14 +354,6 @@
                   </div>
                 </div>
                 <div id="status" class="status">准备就绪</div>
-              </section>
-              <section id="operationFeedback" class="operation-feedback idle" aria-live="polite">
-                <div>
-                  <strong id="operationTitle">等待操作</strong>
-                  <p id="operationDetail">点击生成、保存、质检或发布按钮后，这里会显示执行进度和结果位置。</p>
-                </div>
-                <span id="operationLocation">结果位置：暂无</span>
-                <ol id="operationHistory"></ol>
               </section>
               <div class="editor-actions">
                 <button id="saveChapterPlan">保存章节规划</button>
