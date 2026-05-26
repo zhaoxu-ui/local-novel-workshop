@@ -101,6 +101,12 @@ const el = {
   writingQualityText: document.querySelector("#writingQualityText"),
   writingQualityResult: document.querySelector("#writingQualityResult"),
   runWritingQualityLoop: document.querySelector("#runWritingQualityLoop"),
+  publishCenter: document.querySelector("#publishCenter"),
+  publishCenterTitle: document.querySelector("#publishCenterTitle"),
+  publishCenterText: document.querySelector("#publishCenterText"),
+  publishCenterPlatform: document.querySelector("#publishCenterPlatform"),
+  publishCenterResult: document.querySelector("#publishCenterResult"),
+  runPublishCenter: document.querySelector("#runPublishCenter"),
   smartGuideTitle: document.querySelector("#smartGuideTitle"),
   smartGuideText: document.querySelector("#smartGuideText"),
   smartPrimaryAction: document.querySelector("#smartPrimaryAction"),
@@ -1086,6 +1092,60 @@ async function runWritingQualityLoop() {
     renderFiles();
     await refreshTaskCenter();
     setStatus(`写作质检完成：${data.reportFile}`);
+  } catch (error) {
+    setStatus(actionableErrorMessage(error), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function renderPublishCenter(result = null) {
+  if (!el.publishCenterResult) return;
+  if (!result) {
+    el.publishCenterResult.innerHTML = "";
+    return;
+  }
+  const files = result.files || {};
+  el.publishCenterTitle.textContent = `${result.platform || "通用"}发布包`;
+  el.publishCenterText.textContent = `发布准备度 ${result.score ?? "-"}，状态：${result.status || "已生成"}`;
+  el.publishCenterResult.innerHTML = `
+    <div class="publish-center-files">
+      ${Object.entries(files).map(([key, file]) => `<button type="button" data-publish-file="${escapeAttr(file)}">${escapeHtml({
+        materials: "发布资料",
+        finalCheck: "总检查",
+        export: "正文导出",
+        template: "平台模板"
+      }[key] || key)}</button>`).join("")}
+    </div>
+    <div class="publish-center-checks">
+      ${(result.checks || []).slice(0, 6).map((item) => `<span class="${item.ok ? "ok" : "warning"}">${escapeHtml(item.label)}：${escapeHtml(item.ok ? "通过" : item.fix || "需处理")}</span>`).join("")}
+    </div>
+  `;
+  for (const button of el.publishCenterResult.querySelectorAll("[data-publish-file]")) {
+    button.addEventListener("click", () => openFileByPath(button.dataset.publishFile));
+  }
+}
+
+async function runPublishCenter() {
+  if (!state.activeProject) return guideToProjectStart();
+  setBusy(true);
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/publish-center`, {
+      method: "POST",
+      body: JSON.stringify({
+        platform: el.publishCenterPlatform?.value || el.publishPlatform?.value || "通用",
+        from: el.batchFrom?.value || "",
+        to: el.batchTo?.value || ""
+      })
+    });
+    if (data.project) {
+      state.activeProject = data.project;
+      state.files = data.project.files || [];
+    }
+    renderPublishCenter(data);
+    renderFiles();
+    await refreshTaskCenter();
+    setStatus(`发布中心已生成：${data.files?.finalCheck || "发布包"}`);
   } catch (error) {
     setStatus(actionableErrorMessage(error), "error");
   } finally {
@@ -4166,6 +4226,7 @@ on(el.saveChapterPlan, "click", saveChapterPlan);
 on(el.saveChapter, "click", saveChapter);
 on(el.compareLatestVersion, "click", compareLatestVersion);
 on(el.runWritingQualityLoop, "click", runWritingQualityLoop);
+on(el.runPublishCenter, "click", runPublishCenter);
 on(el.chapterBrief, "input", scheduleAutosave);
 on(el.chapterBrief, "input", renderSmartGuide);
 on(el.draft, "input", scheduleAutosave);

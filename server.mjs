@@ -2032,6 +2032,62 @@ ${titleList || "- 暂无章节"}
   return { file };
 }
 
+function platformPublishTemplate(platform = "通用") {
+  const key = String(platform || "通用").toLowerCase();
+  const map = {
+    "番茄": ["标题直给冲突，不堆生僻词。", "简介前三句交代主角、困境、爽点或悬念。", "章节末尾保留明确追读问题。"],
+    "起点": ["突出题材创新点、升级线或世界规则。", "简介允许更完整的设定钩子，但避免说明书。", "章节标题保持卷内节奏和信息增量。"],
+    "七猫": ["标签要清楚，简介口语化。", "开篇冲突靠前，减少慢热铺垫。", "章尾钩子要具体。"],
+    "飞卢": ["标题和简介强调强设定、强目标、强差异。", "节奏更快，减少长段心理解释。", "卖点集中展示，不分散。"]
+  };
+  const matched = Object.keys(map).find((name) => key.includes(name.toLowerCase()));
+  const rules = map[matched] || ["作品名、简介、标签、封面描述保持一致。", "章节标题不要剧透核心反转。", "发布前检查章节缺失、标题重复和未回收风险。"];
+  return {
+    platform: matched || platform || "通用",
+    rules,
+    format: [
+      "作品名：保持与项目名一致",
+      "一句话简介：主角 + 困境 + 类型钩子",
+      "标签：类型 / 主角身份 / 核心冲突 / 情绪卖点",
+      "封面：人物主体 + 核心场景 + 标志物 + 清晰移动端构图"
+    ]
+  };
+}
+
+async function runPublishCenter(projectId, { platform = "通用", from = "", to = "" } = {}) {
+  const materials = await generatePublishMaterials(projectId, { platform, from, to });
+  const finalCheck = await runFinalPublishCheck(projectId, { platform });
+  const exported = await exportProject(projectId, { format: "md", from, to, withTitles: true });
+  const template = platformPublishTemplate(platform);
+  const templateFile = `06_发布/平台发布模板_${slugify(template.platform)}_${timestampId()}.md`;
+  await writeProjectFile(projectId, templateFile, `# 平台发布模板
+
+目标平台：${template.platform}
+生成时间：${new Date().toISOString()}
+
+## 格式
+
+${template.format.map((item) => `- ${item}`).join("\n")}
+
+## 平台规则
+
+${template.rules.map((item) => `- ${item}`).join("\n")}
+`);
+  return {
+    platform: template.platform,
+    status: finalCheck.status,
+    score: finalCheck.score,
+    files: {
+      materials: materials.file,
+      finalCheck: finalCheck.reportFile,
+      export: exported.file,
+      template: templateFile
+    },
+    checks: finalCheck.checks,
+    template
+  };
+}
+
 async function chapterWordCount(projectId, chapter) {
   if (!chapter.file || !(await exists(projectPath(projectId, ...chapter.file.split("/"))))) return 0;
   const text = await readProjectFile(projectId, chapter.file).catch(() => "");
@@ -6381,6 +6437,19 @@ async function routeApi(req, res, url) {
         title: "安装包发布说明",
         detail: result.file,
         files: [result.file]
+      });
+      return sendJson(res, 200, { ...result, project: await readProject(projectId) });
+    }
+
+    if (req.method === "POST" && parts[3] === "publish-center") {
+      const body = await readBody(req);
+      const result = await runPublishCenter(projectId, body);
+      await recordProjectTask(projectId, {
+        kind: "publish",
+        status: result.status === "可整理发布" ? "completed" : "needs_review",
+        title: "发布中心一键整理",
+        detail: result.files.finalCheck,
+        files: Object.values(result.files).filter(Boolean)
       });
       return sendJson(res, 200, { ...result, project: await readProject(projectId) });
     }

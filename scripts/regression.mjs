@@ -114,6 +114,13 @@ try {
     method: "POST",
     body: JSON.stringify({})
   });
+  const publishCenter = await api(`/api/projects/${encodeURIComponent(id)}/publish-center`, {
+    method: "POST",
+    body: JSON.stringify({ platform: "番茄", from: 1, to: 1 })
+  });
+  if (!publishCenter.files?.template || !publishCenter.files?.finalCheck || !publishCenter.files?.export) {
+    throw new Error("发布中心未生成平台模板、总检或导出文件");
+  }
   const memorySchemaCheck = await api(`/api/projects/${encodeURIComponent(id)}/memory-schema-check`);
   const diagnosticsReport = await api(`/api/projects/${encodeURIComponent(id)}/diagnostics-report`, {
     method: "POST",

@@ -281,6 +281,25 @@
               <button id="runWritingQualityLoop" type="button">检查这一章</button>
               <div id="writingQualityResult" class="writing-quality-result"></div>
             </section>
+            <section id="publishCenter" class="publish-center" aria-label="发布中心">
+              <div>
+                <p class="eyebrow">发布中心</p>
+                <h2 id="publishCenterTitle">发布前一键整理</h2>
+                <p id="publishCenterText">生成发布资料、平台模板、总检查和 Markdown 导出，适合最后整理上架。</p>
+              </div>
+              <label>
+                目标平台
+                <select id="publishCenterPlatform">
+                  <option value="通用">通用</option>
+                  <option value="番茄">番茄</option>
+                  <option value="起点">起点</option>
+                  <option value="七猫">七猫</option>
+                  <option value="飞卢">飞卢</option>
+                </select>
+              </label>
+              <button id="runPublishCenter" type="button">整理发布包</button>
+              <div id="publishCenterResult" class="publish-center-result"></div>
+            </section>
             <div class="editor-actions">
               <button id="saveChapterPlan">保存章节规划</button>
               <button id="saveChapter">保存为章节</button>
