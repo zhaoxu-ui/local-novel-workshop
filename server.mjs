@@ -2651,6 +2651,69 @@ async function deleteProjectSnapshot(projectId, snapshotId) {
   return { deleted: snapshotId };
 }
 
+async function buildPathReadinessReport(projectId) {
+  const project = await readProject(projectId);
+  const files = project.files || [];
+  const chapters = project.chapters || [];
+  const snapshots = await listProjectSnapshots(projectId);
+  const hasIdea = files.includes("00_总控/立项建议.md") || Boolean(project.premise);
+  const hasChapter = files.some((file) => file.startsWith("01_正文/") && file.endsWith(".md"));
+  const hasQuality = files.some((file) => file.startsWith("06_审稿/") || file.includes("质检"));
+  const hasPublish = files.includes("00_总控/封面与发布资料.md") || files.some((file) => file.startsWith("10_发布/"));
+  const recentSafety = snapshots.some((item) => ["before_chapter_write", "before_pipeline", "before_sync_apply", "manual", "before_restore"].includes(item.reason));
+  const items = [
+    {
+      key: "idea",
+      label: "立项",
+      status: hasIdea ? "ok" : "blocker",
+      detail: hasIdea ? "已有立项信息或项目创意。" : "先生成立项建议，避免后续章节没有方向。",
+      action: "idea"
+    },
+    {
+      key: "chapter",
+      label: "写章",
+      status: hasChapter || chapters.length ? "ok" : "warning",
+      detail: hasChapter ? "已有正文，可继续生成或修订。" : "还没有正文，建议先写第一章启动想法。",
+      action: "brief"
+    },
+    {
+      key: "quality",
+      label: "审核",
+      status: hasQuality ? "ok" : hasChapter ? "warning" : "blocker",
+      detail: hasQuality ? "已有审稿或质检产物。" : hasChapter ? "已有正文，建议跑一次质量检查。" : "生成正文后再进行审核。",
+      action: "quality"
+    },
+    {
+      key: "publish",
+      label: "发布",
+      status: hasPublish ? "ok" : hasChapter ? "warning" : "blocker",
+      detail: hasPublish ? "已有发布资料或导出产物。" : hasChapter ? "发布前建议补齐简介、标签和封面文案。" : "至少完成一章后再整理发布。",
+      action: "publish"
+    },
+    {
+      key: "snapshot",
+      label: "安全备份",
+      status: recentSafety ? "ok" : "warning",
+      detail: recentSafety ? `已有 ${snapshots.length} 个快照。` : "关键写入会自动快照，也可以手动创建。",
+      action: "snapshot"
+    }
+  ];
+  const blockers = items.filter((item) => item.status === "blocker").length;
+  const warnings = items.filter((item) => item.status === "warning").length;
+  const summary = blockers
+    ? `发现 ${blockers} 个会卡住流程的问题，建议先处理。`
+    : warnings
+      ? `主线可继续，有 ${warnings} 个发布前提醒。`
+      : "从立项到发布的基础路径已经打通。";
+  return {
+    projectId,
+    summary,
+    score: Math.max(0, 100 - blockers * 24 - warnings * 9),
+    items,
+    updatedAt: new Date().toISOString()
+  };
+}
+
 async function getProjectStats(projectId, files = null) {
   const allFiles = files || (await listMarkdownFiles(projectId));
   const chapterFiles = allFiles.filter((file) => file.startsWith("01_正文/"));
@@ -5794,6 +5857,10 @@ async function routeApi(req, res, url) {
       return sendJson(res, 200, await searchProjectFiles(projectId, url.searchParams.get("q") || ""));
     }
 
+    if (req.method === "GET" && parts[3] === "readiness") {
+      return sendJson(res, 200, { report: await buildPathReadinessReport(projectId) });
+    }
+
     if (req.method === "GET" && parts[3] === "narrative-radar") {
       return sendJson(res, 200, await analyzeNarrativeRadar(projectId, { file: url.searchParams.get("file") || "" }));
     }
@@ -5921,6 +5988,13 @@ async function routeApi(req, res, url) {
     if (req.method === "POST" && parts[3] === "chapter") {
       const body = await readBody(req);
       const file = body.file || chapterFileName(body.chapterNo, body.title);
+      let safetySnapshot = null;
+      if (await exists(projectPath(projectId, ...file.split("/")))) {
+        safetySnapshot = await createProjectSnapshot(projectId, {
+          note: `覆盖章节 ${file} 前自动创建`,
+          reason: "before_chapter_write"
+        });
+      }
       const result = await writeProjectFile(projectId, file, body.content);
       await updateChapterPlan(projectId, {
         no: body.chapterNo,
@@ -5930,7 +6004,7 @@ async function routeApi(req, res, url) {
         file: result.file,
         wordCount: String(body.content || "").replace(/\s/g, "").length
       });
-      return sendJson(res, 200, result);
+      return sendJson(res, 200, { ...result, safetySnapshot });
     }
 
     if (parts[3] === "chapters") {
@@ -6001,7 +6075,7 @@ async function routeApi(req, res, url) {
         }
         const safetySnapshot = await createProjectSnapshot(projectId, {
           note: `应用状态同步前：${runtimeDir}`,
-          reason: "before_state_sync_review"
+          reason: "before_sync_apply"
         });
         const result = await applyStateSyncReviewData(projectId, {
           runtimeDir,
@@ -6226,6 +6300,10 @@ async function routeApi(req, res, url) {
     if (req.method === "POST" && parts[3] === "pipeline") {
       const body = await readBody(req);
       const meta = JSON.parse(await fs.readFile(projectPath(projectId, "project.json"), "utf8"));
+      const safetySnapshot = await createProjectSnapshot(projectId, {
+        note: `生成第 ${body.chapterNo || ""} 章前自动创建`,
+        reason: "before_pipeline"
+      });
       const runtime = await compileRuntimeArtifacts(projectId, {
         task: "pipeline",
         chapterNo: body.chapterNo,
@@ -6256,7 +6334,7 @@ async function routeApi(req, res, url) {
           runtimeDir: runtime.runtimeDir,
           files: [run.finalFile, run.logFile, run.statusFile, `${runtime.runtimeDir}/trace.json`].filter(Boolean)
         });
-        return sendJson(res, 202, { mode: "codex", run, runtime });
+        return sendJson(res, 202, { mode: "codex", run, runtime, safetySnapshot });
       }
 
       const result = await runModelPipeline(projectId, body, meta, runtime);
@@ -6269,7 +6347,7 @@ async function routeApi(req, res, url) {
         runtimeDir: result.runtimeDir,
         files: [result.chapterFile, result.finalFile, `${result.runtimeDir}/trace.json`].filter(Boolean)
       });
-      return sendJson(res, 200, { mode: "model", ...result });
+      return sendJson(res, 200, { mode: "model", ...result, safetySnapshot });
     }
 
     if (req.method === "POST" && parts[3] === "idea") {

@@ -104,6 +104,11 @@ const el = {
   nextStepTitle: document.querySelector("#nextStepTitle"),
   nextStepText: document.querySelector("#nextStepText"),
   nextStepAction: document.querySelector("#nextStepAction"),
+  pathReadinessPanel: document.querySelector("#pathReadinessPanel"),
+  pathReadinessTitle: document.querySelector("#pathReadinessTitle"),
+  pathReadinessText: document.querySelector("#pathReadinessText"),
+  pathReadinessItems: document.querySelector("#pathReadinessItems"),
+  runPathReadiness: document.querySelector("#runPathReadiness"),
   incubationResultPanel: document.querySelector("#incubationResultPanel"),
   incubationResultTitle: document.querySelector("#incubationResultTitle"),
   incubationResultStatus: document.querySelector("#incubationResultStatus"),
@@ -225,6 +230,23 @@ const FLOW_STAGE_DETAIL_TABS = {
 function setStatus(message, type = "") {
   el.status.textContent = message;
   el.status.className = `status ${type}`.trim();
+}
+
+function actionableErrorMessage(error) {
+  const message = String(error?.message || error || "操作失败");
+  if (/fetch failed|ECONNREFUSED|本地模型|Ollama|endpoint/i.test(message)) {
+    return `${message}。下一步：打开 AI 执行配置，确认本地模型服务地址可访问；如果使用 Codex，请切到“Codex 直连”。`;
+  }
+  if (/Codex|codex|cc-switch|ENOENT|未找到/.test(message)) {
+    return `${message}。下一步：确认本机 Codex 可运行，并检查 cc-switch 当前配置。`;
+  }
+  if (/项目不存在|请选择项目|选择项目/.test(message)) {
+    return `${message}。下一步：从左侧选择项目，或在“创作起点”生成一个新项目。`;
+  }
+  if (/文件不存在|no such file|ENOENT/i.test(message)) {
+    return `${message}。下一步：打开资料中心或项目文件夹，确认该文件是否已生成。`;
+  }
+  return message;
 }
 
 function openOnboarding() {
@@ -876,6 +898,67 @@ function renderNextStep() {
   el.nextStepText.textContent = step.text;
   el.nextStepAction.textContent = step.label;
   el.nextStepAction.dataset.nextStepAction = step.action;
+}
+
+function renderPathReadiness(report = null) {
+  if (!el.pathReadinessPanel) return;
+  if (!state.activeProject) {
+    el.pathReadinessTitle.textContent = "先选择项目";
+    el.pathReadinessText.textContent = "选择或创建项目后，我会检查从立项到发布有没有卡点。";
+    el.pathReadinessItems.innerHTML = "";
+    return;
+  }
+  if (!report) {
+    el.pathReadinessTitle.textContent = "创作路径待检查";
+    el.pathReadinessText.textContent = "一键检查立项、写章、审核、发布资料和安全备份。";
+    el.pathReadinessItems.innerHTML = "";
+    return;
+  }
+  const blockers = report.items?.filter((item) => item.status === "blocker").length || 0;
+  const warnings = report.items?.filter((item) => item.status === "warning").length || 0;
+  el.pathReadinessTitle.textContent = blockers ? `有 ${blockers} 个卡点` : warnings ? `有 ${warnings} 个提醒` : "创作路径可继续";
+  el.pathReadinessText.textContent = report.summary || "路径检查完成。";
+  el.pathReadinessItems.innerHTML = (report.items || []).map((item) => `
+    <button type="button" class="path-readiness-item ${escapeAttr(item.status)}" data-readiness-action="${escapeAttr(item.action || "")}">
+      <strong>${escapeHtml(item.label)}</strong>
+      <span>${escapeHtml(item.detail || "")}</span>
+    </button>
+  `).join("");
+  for (const button of el.pathReadinessItems.querySelectorAll("[data-readiness-action]")) {
+    button.addEventListener("click", () => runReadinessAction(button.dataset.readinessAction));
+  }
+}
+
+async function refreshPathReadiness() {
+  if (!state.activeProject) {
+    renderPathReadiness();
+    return guideToProjectStart("先选择或创建项目，再检查创作路径。");
+  }
+  setBusy(true);
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/readiness`);
+    renderPathReadiness(data.report);
+    setStatus(data.report?.summary || "创作路径检查完成。");
+  } catch (error) {
+    setStatus(actionableErrorMessage(error), "error");
+  } finally {
+    setBusy(false);
+  }
+}
+
+function runReadinessAction(action) {
+  if (action === "idea") return openFileByPath("00_总控/立项建议.md");
+  if (action === "brief") return guideToChapterBrief();
+  if (action === "quality") return runQualityCheck();
+  if (action === "publish") return runSmartPublishAction();
+  if (action === "snapshot") {
+    state.layout.advancedToolsCollapsed = false;
+    setToolboxGroup("revision");
+    setActiveToolPanel("snapshots");
+    renderLayoutState();
+    return setStatus("已打开快照面板，可创建或查看安全备份。");
+  }
+  return renderSmartGuide();
 }
 
 function compactMarkdownValue(value = "", maxLength = 120) {
@@ -1707,6 +1790,7 @@ async function loadProject(id) {
   renderTaskDetail();
   renderNarrativeRadar();
   renderStoryBible();
+  renderPathReadiness();
   renderStyleProfileResult();
   renderMemoryRecallResult();
   renderSyncReviews();
@@ -1894,7 +1978,7 @@ async function runPipeline() {
     setStatus(`这一章已生成。最终章节：${data.chapterFile || "未保存"}。阶段产物：${data.runtimeDir}`);
   } catch (error) {
     setPipelineProgress(state.pipelineProgress?.step || "prepare", "error");
-    setStatus(error.message, "error");
+    setStatus(actionableErrorMessage(error), "error");
   } finally {
     setBusy(false);
   }
@@ -1933,7 +2017,7 @@ async function incubateIdea() {
     renderIncubationResult(state.incubationResult);
     setStatus(`立项建议已生成并写入：${data.file}`);
   } catch (error) {
-    setStatus(error.message, "error");
+    setStatus(actionableErrorMessage(error), "error");
   } finally {
     setBusy(false);
   }
@@ -1979,7 +2063,7 @@ async function incubateIdeaWithCodex() {
     refreshTaskCenter();
     pollCodexRun(data.run.runId, "00_总控/立项建议.md");
   } catch (error) {
-    setStatus(error.message, "error");
+    setStatus(actionableErrorMessage(error), "error");
   } finally {
     setBusy(false);
   }
@@ -3918,6 +4002,7 @@ on(el.smartAdvancedAction, "click", () => toggleAdvancedTools(false));
 on(el.smartPrimaryAction, "click", runSmartPrimaryAction);
 on(el.smartPublishAction, "click", runSmartPublishAction);
 on(el.nextStepAction, "click", runNextStepAction);
+on(el.runPathReadiness, "click", refreshPathReadiness);
 on(el.incubationOpenFile, "click", openIncubationFile);
 on(el.incubationRerun, "click", rerunIncubation);
 on(el.incubationStartChapter, "click", startFirstChapterFromIncubation);

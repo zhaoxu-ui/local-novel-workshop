@@ -54,6 +54,22 @@ try {
       content: "门外的雨停了。\n\n林岚把钥匙压在掌心，没有立刻开门。\n\n屋里传来一声很轻的笑。\n\n她知道，这不是母亲会发出的声音。\n\n“谁在里面？”她问。\n\n没人回答。\n\n灯却自己亮了。"
     })
   });
+  const overwrittenChapter = await api(`/api/projects/${encodeURIComponent(id)}/chapter`, {
+    method: "POST",
+    body: JSON.stringify({
+      chapterNo: 1,
+      title: "测试章节",
+      brief: "覆盖章节时应该先自动快照。",
+      content: "门外的雨停了。\n\n林岚第二次把钥匙压在掌心，确认自己没有听错。"
+    })
+  });
+  if (overwrittenChapter.safetySnapshot?.reason !== "before_chapter_write") {
+    throw new Error("覆盖章节前未自动创建安全快照");
+  }
+  const readinessBeforeQuality = await api(`/api/projects/${encodeURIComponent(id)}/readiness`);
+  if (!readinessBeforeQuality.report?.items?.some((item) => item.key === "snapshot" && item.status === "ok")) {
+    throw new Error("路径检查未识别自动安全快照");
+  }
 
   const quality = await api(`/api/projects/${encodeURIComponent(id)}/quality-check`, {
     method: "POST",
