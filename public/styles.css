@@ -602,7 +602,10 @@ label.needs-attention,
 }
 
 .experience-mode-toggle button {
-  height: 100%;
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  height: auto;
   min-height: 0;
   padding: 0 12px;
   border-color: transparent;
@@ -623,6 +626,12 @@ label.needs-attention,
   min-height: var(--top-action-height);
   padding: 0 10px;
   font-size: 13px;
+}
+
+.top-actions .experience-mode-toggle button {
+  height: auto;
+  min-height: 0;
+  padding: 0 12px;
 }
 
 .top-actions > button,
