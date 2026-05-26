@@ -1200,6 +1200,59 @@ label.needs-attention,
   box-shadow: var(--shadow);
 }
 
+.chapter-flow-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.32fr);
+  gap: 14px;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid #cbd5e1;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.chapter-flow-panel h2 {
+  margin: 2px 0 6px;
+  font-size: 17px;
+  letter-spacing: 0;
+}
+
+.chapter-flow-panel p:last-child {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.chapter-flow-panel.planned {
+  border-left-color: #38bdf8;
+}
+
+.chapter-flow-panel.running {
+  border-left-color: #facc15;
+}
+
+.chapter-flow-panel.reviewing {
+  border-left-color: #fb923c;
+}
+
+.chapter-flow-panel.approved {
+  border-left-color: #22c55e;
+}
+
+.chapter-flow-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.chapter-flow-actions button {
+  width: 100%;
+  min-height: 40px;
+}
+
 .pipeline-dock {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 190px;
@@ -1804,13 +1857,14 @@ label.needs-attention,
 }
 
 .advanced-tools-collapsed .toolbox-tabs,
-.advanced-tools-collapsed [data-tool-panel]:not([data-tool-panel="text-actions"]):not([data-tool-panel="chapter-board"]):not([data-tool-panel="sync-review"]) {
+.advanced-tools-collapsed [data-tool-panel]:not([data-tool-panel="text-actions"]):not([data-tool-panel="chapter-board"]):not([data-tool-panel="sync-review"]):not([data-tool-panel="quality"]) {
   display: none !important;
 }
 
 .advanced-tools-collapsed [data-tool-panel="text-actions"],
 .advanced-tools-collapsed [data-tool-panel="chapter-board"],
-.advanced-tools-collapsed [data-tool-panel="sync-review"] {
+.advanced-tools-collapsed [data-tool-panel="sync-review"],
+.advanced-tools-collapsed [data-tool-panel="quality"] {
   display: grid;
 }
 
@@ -3537,6 +3591,7 @@ button.is-loading::before {
   }
 
   .next-step-banner,
+  .chapter-flow-panel,
   .path-readiness-panel,
   .project-dashboard,
   .first-chapter-starter,

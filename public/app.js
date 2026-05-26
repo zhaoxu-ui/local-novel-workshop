@@ -108,6 +108,11 @@ const el = {
   chapterNo: document.querySelector("#chapterNo"),
   chapterTitle: document.querySelector("#chapterTitle"),
   fileSelect: document.querySelector("#fileSelect"),
+  chapterFlowPanel: document.querySelector("#chapterFlowPanel"),
+  chapterFlowTitle: document.querySelector("#chapterFlowTitle"),
+  chapterFlowText: document.querySelector("#chapterFlowText"),
+  chapterFlowBack: document.querySelector("#chapterFlowBack"),
+  chapterFlowPrimary: document.querySelector("#chapterFlowPrimary"),
   chapterBrief: document.querySelector("#chapterBrief"),
   draft: document.querySelector("#draft"),
   draftPreview: document.querySelector("#draftPreview"),
@@ -1929,6 +1934,7 @@ async function retryTask(taskId) {
     setStatus(error.message, "error");
   } finally {
     setBusy(false);
+    renderChapterFlow();
   }
 }
 
@@ -1947,6 +1953,7 @@ async function cancelTask(taskId) {
     setStatus(error.message, "error");
   } finally {
     setBusy(false);
+    renderChapterFlow();
   }
 }
 
@@ -2123,6 +2130,7 @@ async function saveStoryBibleEntry() {
     setStatus(error.message, "error");
   } finally {
     setBusy(false);
+    renderChapterFlow();
   }
 }
 
@@ -2226,6 +2234,7 @@ async function createProject() {
     setStatus(error.message, "error");
   } finally {
     setBusy(false);
+    renderChapterFlow();
   }
 }
 
@@ -2276,6 +2285,7 @@ async function loadSelectedFile() {
       return;
     }
     setStatus("已切换到新章节。");
+    renderChapterFlow();
     return;
   }
   setBusy(true);
@@ -2289,6 +2299,8 @@ async function loadSelectedFile() {
     parseChapterFromFile(file);
     setStatus(`已打开：${file}`);
     renderFileBrowser();
+    renderChapterBoard();
+    renderChapterFlow();
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
@@ -2937,17 +2949,166 @@ function chapterStatusClass(status = "") {
   }[status] || "unplanned";
 }
 
+function selectedChapter() {
+  const no = Number(el.chapterNo?.value || 0);
+  return (state.chapters || []).find((chapter) => {
+    return (no && Number(chapter.no) === no) || (state.activeFile && chapter.file === state.activeFile);
+  }) || null;
+}
+
+function chapterFlowState() {
+  if (!state.activeProject) {
+    return {
+      status: "",
+      title: "先选择项目",
+      text: "选择或创建项目后，再从章节看板打开章节。",
+      primary: "选择或创建项目",
+      primaryAction: "project"
+    };
+  }
+  const chapter = selectedChapter();
+  const no = Number(el.chapterNo?.value || 0);
+  const label = chapter ? `第 ${chapter.no} 章 ${chapter.title || ""}`.trim() : (no ? `第 ${no} 章` : "当前章节");
+  const status = chapter?.status || (state.activeFile ? "待审" : "未规划");
+  if (status === "可发布") {
+    return {
+      status,
+      title: `${label} · 可发布`,
+      text: "这一章已经通过审核，可以继续整理发布资料；如果又改了正文，可退回待审重新复核。",
+      back: "退回待审",
+      backAction: "review",
+      primary: "整理发布",
+      primaryAction: "publish"
+    };
+  }
+  if (status === "待审") {
+    const hasQualityResult = Boolean(state.qualityReport?.reportFile || state.workflowResult?.reportFile);
+    return {
+      status,
+      title: `${label} · 待审`,
+      text: hasQualityResult
+        ? "已生成审稿结果。确认没有硬伤后标记通过；如果需要改，就退回修改。"
+        : "待审表示正文已经生成或保存，下一步应先审稿。审完没有问题可标记通过，有问题就退回修改。",
+      back: "退回修改",
+      backAction: "planned",
+      primary: hasQualityResult ? "标记通过" : "审核这一章",
+      primaryAction: hasQualityResult ? "approve" : "quality"
+    };
+  }
+  if (status === "生成中") {
+    return {
+      status,
+      title: `${label} · 生成中`,
+      text: "这一章正在生成。可以查看任务中心，或稍后刷新项目状态。",
+      back: "刷新项目",
+      backAction: "refresh",
+      primary: "查看任务",
+      primaryAction: "tasks"
+    };
+  }
+  if (status === "已规划") {
+    return {
+      status,
+      title: `${label} · 已规划`,
+      text: "这一章已有规划但还没有可审核正文。下一步是生成正文，也可以继续补充本章想法。",
+      back: "补充规划",
+      backAction: "brief",
+      primary: "生成正文",
+      primaryAction: "generate"
+    };
+  }
+  return {
+    status,
+    title: `${label} · 未规划`,
+    text: "先补齐章节号、标题和本章想法，保存规划后再生成正文。",
+    back: "填写想法",
+    backAction: "brief",
+    primary: "保存规划",
+    primaryAction: "plan"
+  };
+}
+
+function renderChapterFlow() {
+  if (!el.chapterFlowPanel || !el.chapterFlowTitle || !el.chapterFlowText || !el.chapterFlowPrimary) return;
+  const flow = chapterFlowState();
+  el.chapterFlowPanel.className = `chapter-flow-panel ${flow.status ? chapterStatusClass(flow.status) : "muted"}`;
+  el.chapterFlowTitle.textContent = flow.title;
+  el.chapterFlowText.textContent = flow.text;
+  el.chapterFlowPrimary.textContent = flow.primary;
+  el.chapterFlowPrimary.dataset.chapterFlowAction = flow.primaryAction || "";
+  if (el.chapterFlowBack) {
+    el.chapterFlowBack.hidden = !flow.backAction;
+    el.chapterFlowBack.textContent = flow.back || "上一步";
+    el.chapterFlowBack.dataset.chapterFlowAction = flow.backAction || "";
+  }
+}
+
+async function updateActiveChapterStatus(status) {
+  if (!state.activeProject) return guideToProjectStart();
+  const no = Number(el.chapterNo.value || selectedChapter()?.no || 0);
+  if (!no) return guideToChapterBrief("先从章节看板选择章节，或填写章节号。");
+  const chapter = selectedChapter() || {};
+  const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/chapters`, {
+    method: "POST",
+    body: JSON.stringify({
+      no,
+      title: el.chapterTitle.value.trim() || chapter.title || "",
+      status,
+      brief: el.chapterBrief.value.trim() || chapter.brief || "",
+      hook: chapter.hook || "",
+      file: state.activeFile || chapter.file || "",
+      wordCount: chapter.wordCount || ""
+    })
+  });
+  state.chapters = data.chapters || [];
+  if (state.activeProject) state.activeProject.chapters = state.chapters;
+  renderChapterBoard();
+  renderChapterFlow();
+  setStatus(`第 ${no} 章状态已更新为：${status}`);
+}
+
+async function runChapterFlowAction(action) {
+  const flowAction = action || "project";
+  if (flowAction === "project") return guideToProjectStart();
+  if (flowAction === "brief") return guideToChapterBrief();
+  if (flowAction === "plan") return saveChapterPlan();
+  if (flowAction === "generate") return runPipeline();
+  if (flowAction === "quality") {
+    state.layout.rightCollapsed = false;
+    state.layout.advancedToolsCollapsed = false;
+    setToolboxGroup("quality");
+    setActiveToolPanel("quality");
+    renderLayoutState();
+    return runQualityCheck();
+  }
+  if (flowAction === "approve") return updateActiveChapterStatus("可发布");
+  if (flowAction === "planned") return updateActiveChapterStatus("已规划");
+  if (flowAction === "review") return updateActiveChapterStatus("待审");
+  if (flowAction === "publish") return runSmartPublishAction();
+  if (flowAction === "tasks") {
+    state.layout.rightCollapsed = false;
+    state.layout.advancedToolsCollapsed = false;
+    setToolboxGroup("write");
+    setActiveToolPanel("task-center");
+    renderLayoutState();
+    return refreshTaskCenter(true);
+  }
+  if (flowAction === "refresh" && state.activeProject) return loadProject(state.activeProject.id);
+}
+
 function renderChapterBoard() {
   if (!el.chapterBoard) return;
   const chapters = state.chapters || [];
   if (!state.activeProject) {
     el.chapterBoard.textContent = "选择项目后显示章节规划";
     el.chapterBoard.classList.add("muted");
+    renderChapterFlow();
     return;
   }
   if (!chapters.length) {
     el.chapterBoard.textContent = "暂无章节规划。填写章节号、标题和“这一章想写什么”后点击“保存章节规划”。";
     el.chapterBoard.classList.add("muted");
+    renderChapterFlow();
     return;
   }
   el.chapterBoard.classList.remove("muted");
@@ -2971,6 +3132,7 @@ function renderChapterBoard() {
     button.addEventListener("click", () => loadChapterFromBoard(chapter));
     el.chapterBoard.appendChild(button);
   }
+  renderChapterFlow();
 }
 
 async function loadChapterFromBoard(chapter) {
@@ -2989,6 +3151,7 @@ async function loadChapterFromBoard(chapter) {
     setStatus(`已载入第 ${chapter.no} 章规划。可以补充“这一章想写什么”后点击生成。`);
   }
   renderChapterBoard();
+  renderChapterFlow();
 }
 
 async function saveChapterPlan() {
@@ -3249,11 +3412,13 @@ async function runQualityCheck() {
     renderProjectStats();
     renderChapterBoard();
     renderQualityReport();
+    renderChapterFlow();
     setStatus(`发布前质检完成：${data.verdict.status}，报告已保存到 ${data.reportFile}`);
   } catch (error) {
     setStatus(error.message, "error");
   } finally {
     setBusy(false);
+    renderChapterFlow();
   }
 }
 
@@ -3282,6 +3447,7 @@ async function runAiQualityCheck() {
     renderProjectStats();
     renderChapterBoard();
     renderQualityReport();
+    renderChapterFlow();
     if (data.mode === "codex") {
       setStatus(`Codex AI 深度复核已启动。目标报告：${data.reportFile}`);
     } else {
@@ -3291,6 +3457,7 @@ async function runAiQualityCheck() {
     setStatus(error.message, "error");
   } finally {
     setBusy(false);
+    renderChapterFlow();
   }
 }
 
@@ -4606,6 +4773,8 @@ on(el.generateDiagnosticsReport, "click", generateDiagnosticsReport);
 on(el.createProject, "click", createProject);
 on(el.createDemoProject, "click", createDemoProject);
 on(el.fileSelect, "change", loadSelectedFile);
+on(el.chapterFlowPrimary, "click", () => runChapterFlowAction(el.chapterFlowPrimary?.dataset.chapterFlowAction));
+on(el.chapterFlowBack, "click", () => runChapterFlowAction(el.chapterFlowBack?.dataset.chapterFlowAction));
 on(el.saveChapterPlan, "click", saveChapterPlan);
 on(el.saveChapter, "click", saveChapter);
 on(el.compareLatestVersion, "click", compareLatestVersion);
@@ -4613,9 +4782,13 @@ on(el.runWritingQualityLoop, "click", runWritingQualityLoop);
 on(el.runPublishCenter, "click", runPublishCenter);
 on(el.chapterBrief, "input", scheduleAutosave);
 on(el.chapterBrief, "input", renderSmartGuide);
+on(el.chapterBrief, "input", renderChapterFlow);
+on(el.chapterNo, "input", renderChapterFlow);
+on(el.chapterTitle, "input", renderChapterFlow);
 on(el.draft, "input", scheduleAutosave);
 on(el.draft, "input", renderSmartGuide);
 on(el.draft, "input", renderMarkdownPreview);
+on(el.draft, "input", renderChapterFlow);
 on(el.ideaInput, "input", renderSmartGuide);
 on(el.projectPremise, "input", renderSmartGuide);
 on(el.runGlobalSearch, "click", runGlobalSearch);
