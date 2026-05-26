@@ -525,7 +525,57 @@ function openOperationPanel(group, panelId, message = "") {
   if (message) setStatus(message);
 }
 
-function openOperationResult(action) {
+function qualityResultFile() {
+  return state.qualityReport?.reportFile
+    || state.qualityReport?.localReportFile
+    || state.workflowResult?.reportFile
+    || "";
+}
+
+function workflowResultFile() {
+  return [
+    state.workflowResult?.message,
+    state.workflowResult?.reportFile,
+    state.workflowResult?.file,
+    state.workflowResult?.taskFile,
+    state.workflowResult?.revisionFile,
+    state.workflowResult?.localReportFile,
+    state.workflowResult?.manifestFile
+  ].find(Boolean) || "";
+}
+
+async function refreshProjectFileIndex() {
+  if (!state.activeProject) return;
+  const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}`);
+  state.activeProject = { ...state.activeProject, ...data.project };
+  state.files = data.project.files || state.files || [];
+  state.chapters = data.project.chapters || state.chapters || [];
+  state.snapshots = data.project.snapshots || state.snapshots || [];
+  renderFiles();
+  renderProjectMeta();
+  renderProjectStats();
+  renderChapterBoard();
+  renderSnapshots();
+  renderFileBrowser();
+}
+
+async function openResultFile(file, label = "结果文件") {
+  if (!file || !state.activeProject) return false;
+  if (!state.files.includes(file)) {
+    try {
+      await refreshProjectFileIndex();
+    } catch (error) {
+      setStatus(`刷新项目文件失败：${error.message}`, "error");
+    }
+  }
+  if (!state.files.includes(file)) return false;
+  await openFileByPath(file);
+  setEditorMode("preview");
+  setStatus(`已打开${label}：${file}`);
+  return true;
+}
+
+async function openOperationResult(action) {
   const target = action || el.operationResultAction?.dataset.operationResult || "";
   if (!target) return;
   if (target.startsWith("panel:")) {
@@ -543,8 +593,14 @@ function openOperationResult(action) {
   if (target === "chapter-board") return openOperationPanel("write", "chapter-board", "已打开章节看板。");
   if (target === "quality-result") return openChapterFlowResult("quality-result");
   if (target === "writing-quality-result") return openOperationPanel("quality", "text-actions", "写作质检结果在“文本操作”的写作质检卡片。");
-  if (target === "revision-result") return openOperationPanel("revision", "revision-publish", "修订、冲突和版本结果在这里。");
-  if (target === "publish-result") return openOperationPanel("publish", "revision-publish", "发布检查、发布资料和发布包结果在这里。");
+  if (target === "revision-result") {
+    if (await openResultFile(workflowResultFile(), "修订结果")) return;
+    return openOperationPanel("revision", "revision-publish", "修订、冲突和版本结果在这里。");
+  }
+  if (target === "publish-result") {
+    if (await openResultFile(workflowResultFile(), "发布结果")) return;
+    return openOperationPanel("publish", "revision-publish", "发布检查、发布资料和发布包结果在这里。");
+  }
   if (target === "publish-center-result") return openOperationPanel("publish", "text-actions", "发布中心结果在“文本操作”的发布中心卡片。");
   if (target === "knowledge-result") return openOperationPanel("project", "knowledge", "资料投喂结果会写入能力包、工作流和项目文件。");
   if (target === "style-result") return openOperationPanel("quality", "style-lab", "文风模仿档案在这里。");
@@ -3428,7 +3484,7 @@ function renderChapterFlow() {
   }
 }
 
-function openChapterFlowResult(action) {
+async function openChapterFlowResult(action) {
   const target = action || el.chapterFlowResultAction?.dataset.chapterFlowResult || "";
   if (target === "project") return guideToProjectStart();
   if (target === "draft") {
@@ -3449,8 +3505,9 @@ function openChapterFlowResult(action) {
     setToolboxGroup("quality");
     setActiveToolPanel("quality");
     renderLayoutState();
-    const file = state.qualityReport?.reportFile || state.qualityReport?.localReportFile || "";
-    return setStatus(file ? `审核结果在右侧“发布质检”面板，报告文件：${file}` : "已打开右侧“发布质检”面板。");
+    const file = qualityResultFile();
+    if (target === "quality-result" && await openResultFile(file, "审核报告")) return;
+    return setStatus(file ? `审核结果在右侧“发布质检”面板；也可以在项目文件中打开：${file}` : "已打开右侧“发布质检”面板。");
   }
   if (target === "publish-result") {
     state.layout.rightCollapsed = false;
@@ -3458,6 +3515,7 @@ function openChapterFlowResult(action) {
     setToolboxGroup("publish");
     setActiveToolPanel(state.workflowResult ? "revision-publish" : "text-actions");
     renderLayoutState();
+    if (await openResultFile(workflowResultFile(), "发布结果")) return;
     return setStatus("已打开右侧发布结果区域。");
   }
   if (target === "text-actions") {
