@@ -1226,6 +1226,16 @@ label.needs-attention,
   line-height: 1.65;
 }
 
+.chapter-flow-result {
+  margin-top: 8px !important;
+  padding: 8px 10px;
+  border: 1px solid #d7e2df;
+  border-radius: 7px;
+  background: #f8fbfa;
+  color: var(--ink) !important;
+  font-size: 12px !important;
+}
+
 .chapter-flow-panel.planned {
   border-left-color: #38bdf8;
 }

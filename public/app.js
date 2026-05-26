@@ -111,8 +111,10 @@ const el = {
   chapterFlowPanel: document.querySelector("#chapterFlowPanel"),
   chapterFlowTitle: document.querySelector("#chapterFlowTitle"),
   chapterFlowText: document.querySelector("#chapterFlowText"),
+  chapterFlowResult: document.querySelector("#chapterFlowResult"),
   chapterFlowBack: document.querySelector("#chapterFlowBack"),
   chapterFlowPrimary: document.querySelector("#chapterFlowPrimary"),
+  chapterFlowResultAction: document.querySelector("#chapterFlowResultAction"),
   chapterBrief: document.querySelector("#chapterBrief"),
   draft: document.querySelector("#draft"),
   draftPreview: document.querySelector("#draftPreview"),
@@ -2956,6 +2958,64 @@ function selectedChapter() {
   }) || null;
 }
 
+function chapterFlowResultState(flow = {}) {
+  if (!state.activeProject) {
+    return {
+      text: "结果位置：选择或创建项目后显示。",
+      label: "选择项目",
+      action: "project"
+    };
+  }
+  if (flow.primaryAction === "quality" || flow.primaryAction === "approve") {
+    const reportFile = state.qualityReport?.reportFile || state.qualityReport?.localReportFile || "";
+    return reportFile
+      ? {
+          text: `结果位置：右侧“发布质检”面板；报告文件：${reportFile}`,
+          label: "查看审核结果",
+          action: "quality-result"
+        }
+      : {
+          text: "结果位置：点击“审核这一章”后，右侧会打开“发布质检”面板，并在这里显示报告文件。",
+          label: "打开审核面板",
+          action: "quality-panel"
+        };
+  }
+  if (flow.primaryAction === "publish") {
+    const file = state.workflowResult?.message || state.workflowResult?.reportFile || "";
+    return {
+      text: file ? `结果位置：右侧发布/修订面板；最新产物：${file}` : "结果位置：点击“整理发布”后，右侧会显示发布检查、发布资料和导出入口。",
+      label: "查看发布结果",
+      action: "publish-result"
+    };
+  }
+  if (flow.primaryAction === "generate") {
+    return {
+      text: "结果位置：生成完成后，正文会打开在中间编辑区；章节状态会变成“待审”，再进入审核。",
+      label: "查看生成操作",
+      action: "text-actions"
+    };
+  }
+  if (flow.primaryAction === "tasks") {
+    return {
+      text: "结果位置：右侧“AI 任务中心”显示生成、Codex、重试和取消状态。",
+      label: "查看任务中心",
+      action: "tasks"
+    };
+  }
+  if (flow.primaryAction === "plan") {
+    return {
+      text: "结果位置：保存后会更新右侧“章节看板”。",
+      label: "查看章节看板",
+      action: "chapter-board"
+    };
+  }
+  return {
+    text: state.activeFile ? `结果位置：当前正文文件 ${state.activeFile} 已在中间编辑区打开。` : "结果位置：当前步骤完成后会在这里显示。",
+    label: state.activeFile ? "查看正文" : "查看章节看板",
+    action: state.activeFile ? "draft" : "chapter-board"
+  };
+}
+
 function chapterFlowState() {
   if (!state.activeProject) {
     return {
@@ -3031,15 +3091,76 @@ function chapterFlowState() {
 function renderChapterFlow() {
   if (!el.chapterFlowPanel || !el.chapterFlowTitle || !el.chapterFlowText || !el.chapterFlowPrimary) return;
   const flow = chapterFlowState();
+  const result = chapterFlowResultState(flow);
   el.chapterFlowPanel.className = `chapter-flow-panel ${flow.status ? chapterStatusClass(flow.status) : "muted"}`;
   el.chapterFlowTitle.textContent = flow.title;
   el.chapterFlowText.textContent = flow.text;
   el.chapterFlowPrimary.textContent = flow.primary;
+  el.chapterFlowPrimary.dataset.originalLabel = flow.primary;
   el.chapterFlowPrimary.dataset.chapterFlowAction = flow.primaryAction || "";
+  if (el.chapterFlowResult) {
+    el.chapterFlowResult.textContent = result.text || "结果位置：当前步骤完成后会在这里显示。";
+  }
   if (el.chapterFlowBack) {
     el.chapterFlowBack.hidden = !flow.backAction;
     el.chapterFlowBack.textContent = flow.back || "上一步";
+    el.chapterFlowBack.dataset.originalLabel = flow.back || "上一步";
     el.chapterFlowBack.dataset.chapterFlowAction = flow.backAction || "";
+  }
+  if (el.chapterFlowResultAction) {
+    el.chapterFlowResultAction.hidden = !result.action;
+    el.chapterFlowResultAction.textContent = result.label || "查看结果";
+    el.chapterFlowResultAction.dataset.originalLabel = result.label || "查看结果";
+    el.chapterFlowResultAction.dataset.chapterFlowResult = result.action || "";
+  }
+}
+
+function openChapterFlowResult(action) {
+  const target = action || el.chapterFlowResultAction?.dataset.chapterFlowResult || "";
+  if (target === "project") return guideToProjectStart();
+  if (target === "draft") {
+    setEditorMode("edit");
+    el.draft?.focus();
+    return setStatus("正文结果在中间编辑区。");
+  }
+  if (target === "chapter-board") {
+    state.layout.rightCollapsed = false;
+    setToolboxGroup("write");
+    setActiveToolPanel("chapter-board");
+    renderLayoutState();
+    return setStatus("已打开右侧章节看板。");
+  }
+  if (target === "quality-result" || target === "quality-panel") {
+    state.layout.rightCollapsed = false;
+    state.layout.advancedToolsCollapsed = false;
+    setToolboxGroup("quality");
+    setActiveToolPanel("quality");
+    renderLayoutState();
+    const file = state.qualityReport?.reportFile || state.qualityReport?.localReportFile || "";
+    return setStatus(file ? `审核结果在右侧“发布质检”面板，报告文件：${file}` : "已打开右侧“发布质检”面板。");
+  }
+  if (target === "publish-result") {
+    state.layout.rightCollapsed = false;
+    state.layout.advancedToolsCollapsed = false;
+    setToolboxGroup("publish");
+    setActiveToolPanel(state.workflowResult ? "revision-publish" : "text-actions");
+    renderLayoutState();
+    return setStatus("已打开右侧发布结果区域。");
+  }
+  if (target === "text-actions") {
+    state.layout.rightCollapsed = false;
+    setToolboxGroup("write");
+    setActiveToolPanel("text-actions");
+    renderLayoutState();
+    return setStatus("生成进度和执行反馈在右侧“文本操作”。");
+  }
+  if (target === "tasks") {
+    state.layout.rightCollapsed = false;
+    state.layout.advancedToolsCollapsed = false;
+    setToolboxGroup("write");
+    setActiveToolPanel("task-center");
+    renderLayoutState();
+    return refreshTaskCenter(true);
   }
 }
 
@@ -3990,6 +4111,7 @@ async function workflowPost(path, body, successMessage, target = "revision") {
     renderChapterBoard();
     renderSnapshots();
     renderWorkflowResult();
+    renderChapterFlow();
     await refreshVersions();
     await refreshTaskCenter();
     setStatus(successMessage);
@@ -3998,6 +4120,7 @@ async function workflowPost(path, body, successMessage, target = "revision") {
     setStatus(error.message, "error");
   } finally {
     setBusy(false);
+    renderChapterFlow();
   }
 }
 
@@ -4775,6 +4898,7 @@ on(el.createDemoProject, "click", createDemoProject);
 on(el.fileSelect, "change", loadSelectedFile);
 on(el.chapterFlowPrimary, "click", () => runChapterFlowAction(el.chapterFlowPrimary?.dataset.chapterFlowAction));
 on(el.chapterFlowBack, "click", () => runChapterFlowAction(el.chapterFlowBack?.dataset.chapterFlowAction));
+on(el.chapterFlowResultAction, "click", () => openChapterFlowResult(el.chapterFlowResultAction?.dataset.chapterFlowResult));
 on(el.saveChapterPlan, "click", saveChapterPlan);
 on(el.saveChapter, "click", saveChapter);
 on(el.compareLatestVersion, "click", compareLatestVersion);
