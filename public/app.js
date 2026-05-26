@@ -815,6 +815,7 @@ function renderLayoutState() {
   el.appShell?.classList.toggle("left-collapsed", state.layout.leftCollapsed);
   el.appShell?.classList.toggle("right-collapsed", state.layout.rightCollapsed);
   el.appShell?.classList.toggle("new-project-collapsed", state.layout.newProjectCollapsed);
+  el.appShell?.classList.toggle("has-project", Boolean(state.activeProject));
   renderExperienceMode();
   for (const button of document.querySelectorAll("[data-creation-mode]")) {
     const active = button.dataset.creationMode === state.layout.creationMode;
@@ -2532,6 +2533,7 @@ async function loadProject(id) {
   state.storyBible = null;
   state.lastAutosaveKey = "";
   state.snapshots = data.project.snapshots || [];
+  renderLayoutState();
   el.activeProjectName.textContent = data.project.name;
   renderProjectMeta();
   el.modelName.value = data.project.model || "qwen3:8b";
