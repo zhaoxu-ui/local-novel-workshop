@@ -44,7 +44,7 @@ for (const file of required) {
 }
 
 const pkg = JSON.parse(await fs.readFile(path.join(root, "package.json"), "utf8"));
-const scripts = ["start", "desktop", "pack:win", "check", "smoke", "regression", "e2e", "prepare:github"];
+const scripts = ["start", "desktop", "pack:win", "check", "smoke", "regression", "e2e", "acceptance", "prepare:github"];
 const missingScripts = scripts.filter((name) => !pkg.scripts?.[name]);
 
 const indexHtml = await fs.readFile(path.join(root, "public/index.html"), "utf8");
@@ -62,6 +62,9 @@ const v1ChecklistMd = await fs.readFile(path.join(root, "V1_RELEASE_CHECKLIST.md
 
 const requiredUiMarkers = [
   ["index.html", "id=\"toggleAiConfig\""],
+  ["index.html", "id=\"experienceMode\""],
+  ["index.html", "data-experience-mode=\"beginner\""],
+  ["index.html", "data-experience-mode=\"expert\""],
   ["index.html", "id=\"onboardingOverlay\""],
   ["index.html", "id=\"openOnboarding\""],
   ["index.html", "data-onboarding-action=\"idea\""],
@@ -95,6 +98,8 @@ const requiredUiMarkers = [
   ["index.html", "data-creation-mode=\"idea\""],
   ["index.html", "data-creation-mode=\"manual\""],
   ["app.js", "function renderSmartGuide"],
+  ["app.js", "function setExperienceMode"],
+  ["app.js", "function renderExperienceMode"],
   ["app.js", "function nextStepState"],
   ["app.js", "function renderNextStep"],
   ["app.js", "function runNextStepAction"],
@@ -131,6 +136,9 @@ const requiredUiMarkers = [
   ["app.js", "function guideToLatestResult"],
   ["app.js", "function guideToVersionHistory"],
   ["styles.css", ".one-stop-guide"],
+  ["styles.css", ".experience-mode-toggle"],
+  ["styles.css", ".beginner-mode"],
+  ["styles.css", ".expert-mode"],
   ["styles.css", ".path-readiness-panel"],
   ["styles.css", ".project-dashboard"],
   ["styles.css", ".first-chapter-starter"],

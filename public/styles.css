@@ -584,8 +584,34 @@ label.needs-attention,
 
 .top-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(96px, 1fr));
+  grid-template-columns: minmax(144px, 0.9fr) repeat(4, minmax(96px, 1fr));
   gap: 10px;
+}
+
+.experience-mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.experience-mode-toggle button {
+  min-height: 32px;
+  padding: 0 10px;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.experience-mode-toggle button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
 }
 
 .top-actions button {
@@ -667,6 +693,24 @@ label.needs-attention,
   min-height: 0;
   overflow: hidden;
   padding: 20px 24px 24px;
+}
+
+.beginner-mode .main-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.beginner-mode .toolbox,
+.beginner-mode .quick-open {
+  display: none;
+}
+
+.beginner-mode .toolbox-tabs,
+.beginner-mode .top-pane-toggle {
+  display: none;
+}
+
+.expert-mode .quick-open {
+  display: grid;
 }
 
 .editor-section {

@@ -43,7 +43,8 @@ const state = {
     quickOpenCollapsed: true,
     advancedToolsCollapsed: true,
     projectActionsOpen: false,
-    creationMode: "idea"
+    creationMode: "idea",
+    experienceMode: "beginner"
   }
 };
 
@@ -65,6 +66,7 @@ const el = {
   activeProjectName: document.querySelector("#activeProjectName"),
   projectMeta: document.querySelector("#projectMeta"),
   toolboxTabs: document.querySelector("#toolboxTabs"),
+  experienceMode: document.querySelector("#experienceMode"),
   toggleMoreTools: document.querySelector("#toggleMoreTools"),
   moreToolMenu: document.querySelector("#moreToolMenu"),
   toggleLeftPane: document.querySelector("#toggleLeftPane"),
@@ -341,6 +343,11 @@ function loadLayoutState() {
     state.layout.advancedToolsCollapsed = saved.advancedToolsCollapsed !== false;
     state.layout.projectActionsOpen = false;
     state.layout.creationMode = "idea";
+    state.layout.experienceMode = saved.experienceMode === "expert" ? "expert" : "beginner";
+    if (state.layout.experienceMode === "beginner") {
+      state.layout.leftCollapsed = false;
+      state.layout.rightCollapsed = false;
+    }
     state.activeToolGroup = normalizeToolboxGroup(saved.activeToolGroup || "write");
     state.activeToolPanel = saved.activeToolPanel || "chapter-board";
   } catch {
@@ -352,6 +359,7 @@ function loadLayoutState() {
     state.layout.advancedToolsCollapsed = true;
     state.layout.projectActionsOpen = false;
     state.layout.creationMode = "idea";
+    state.layout.experienceMode = "beginner";
     state.activeToolGroup = "write";
     state.activeToolPanel = "chapter-board";
   }
@@ -365,6 +373,7 @@ function saveLayoutState() {
     moreToolsOpen: state.layout.moreToolsOpen,
     quickOpenCollapsed: state.layout.quickOpenCollapsed,
     advancedToolsCollapsed: state.layout.advancedToolsCollapsed,
+    experienceMode: state.layout.experienceMode,
     activeToolGroup: state.activeToolGroup,
     activeToolPanel: state.activeToolPanel
   }));
@@ -374,6 +383,7 @@ function renderLayoutState() {
   el.appShell?.classList.toggle("left-collapsed", state.layout.leftCollapsed);
   el.appShell?.classList.toggle("right-collapsed", state.layout.rightCollapsed);
   el.appShell?.classList.toggle("new-project-collapsed", state.layout.newProjectCollapsed);
+  renderExperienceMode();
   for (const button of document.querySelectorAll("[data-creation-mode]")) {
     const active = button.dataset.creationMode === state.layout.creationMode;
     button.classList.toggle("active", active);
@@ -432,6 +442,36 @@ function renderLayoutState() {
     el.toggleMoreTools.classList.toggle("active", isSecondaryGroup || state.layout.moreToolsOpen);
   }
   renderSmartGuide();
+}
+
+function renderExperienceMode() {
+  const mode = state.layout.experienceMode === "expert" ? "expert" : "beginner";
+  el.appShell?.classList.toggle("beginner-mode", mode === "beginner");
+  el.appShell?.classList.toggle("expert-mode", mode === "expert");
+  for (const button of document.querySelectorAll("[data-experience-mode]")) {
+    const active = button.dataset.experienceMode === mode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+  if (mode === "beginner") {
+    state.layout.quickOpenCollapsed = true;
+    state.layout.advancedToolsCollapsed = true;
+  }
+}
+
+function setExperienceMode(mode = "beginner") {
+  state.layout.experienceMode = mode === "expert" ? "expert" : "beginner";
+  if (state.layout.experienceMode === "expert") {
+    state.layout.advancedToolsCollapsed = false;
+  } else {
+    state.layout.leftCollapsed = false;
+    state.layout.rightCollapsed = false;
+    state.layout.quickOpenCollapsed = true;
+    state.layout.advancedToolsCollapsed = true;
+  }
+  renderLayoutState();
+  saveLayoutState();
+  setStatus(state.layout.experienceMode === "expert" ? "已切换到专家模式，高级工具已展开。" : "已切换到新手模式，只保留默认创作路径。");
 }
 
 function togglePane(side, force) {
@@ -4282,6 +4322,9 @@ for (const button of document.querySelectorAll("[data-toolbox-group]")) {
 }
 for (const button of document.querySelectorAll("[data-creation-mode]")) {
   button.addEventListener("click", () => setCreationMode(button.dataset.creationMode));
+}
+for (const button of document.querySelectorAll("[data-experience-mode]")) {
+  button.addEventListener("click", () => setExperienceMode(button.dataset.experienceMode));
 }
 for (const button of document.querySelectorAll("[data-onboarding-action]")) {
   button.addEventListener("click", () => handleOnboardingAction(button.dataset.onboardingAction));

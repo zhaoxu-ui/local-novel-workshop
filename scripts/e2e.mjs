@@ -18,6 +18,8 @@ try {
   const appJs = await fs.readFile(path.join(root, "public", "app.js"), "utf8");
   const required = [
     "本地小说工坊",
+    "experienceMode",
+    "data-experience-mode=\"beginner\"",
     "taskKindFilter",
     "runFinalPublishCheck",
     "runMemorySchemaCheck",
@@ -25,6 +27,8 @@ try {
     "/icons/open-book.svg"
   ];
   const requiredAppMarkers = [
+    "function setExperienceMode",
+    "function renderExperienceMode",
     "function toggleActiveToolPanel",
     "state.activeToolPanel === panelId",
     "state.activeToolPanel = \"\""
