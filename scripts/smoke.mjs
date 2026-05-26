@@ -137,6 +137,8 @@ const requiredUiMarkers = [
   ["app.js", "function guideToVersionHistory"],
   ["styles.css", ".one-stop-guide"],
   ["styles.css", ".experience-mode-toggle"],
+  ["styles.css", ".top-actions > button,"],
+  ["styles.css", "height: var(--top-action-height)"],
   ["styles.css", ".beginner-mode"],
   ["styles.css", ".expert-mode"],
   ["styles.css", "grid-template-columns: minmax(132px, 0.75fr) repeat(5, minmax(92px, 1fr))"],

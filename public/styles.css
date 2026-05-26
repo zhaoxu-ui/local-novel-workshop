@@ -19,6 +19,7 @@
   --danger-soft: #fff2f1;
   --shadow: 0 14px 34px rgba(31, 42, 68, 0.045);
   --radius: 8px;
+  --top-action-height: 40px;
 }
 
 * {
@@ -592,6 +593,8 @@ label.needs-attention,
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 4px;
+  height: var(--top-action-height);
+  min-height: var(--top-action-height);
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -599,8 +602,9 @@ label.needs-attention,
 }
 
 .experience-mode-toggle button {
-  min-height: 32px;
-  padding: 0 10px;
+  height: 100%;
+  min-height: 0;
+  padding: 0 12px;
   border-color: transparent;
   background: transparent;
   box-shadow: none;
@@ -616,9 +620,14 @@ label.needs-attention,
 
 .top-actions button {
   width: 100%;
-  min-height: 32px;
+  min-height: var(--top-action-height);
   padding: 0 10px;
   font-size: 13px;
+}
+
+.top-actions > button,
+.top-action-group > button {
+  height: var(--top-action-height);
 }
 
 .top-action-group {
