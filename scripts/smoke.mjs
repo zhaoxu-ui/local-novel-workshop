@@ -62,6 +62,72 @@ const v1ChecklistMd = await fs.readFile(path.join(root, "V1_RELEASE_CHECKLIST.md
 
 const requiredUiMarkers = [
   ["index.html", "id=\"toggleAiConfig\""],
+  ["index.html", "id=\"onboardingOverlay\""],
+  ["index.html", "id=\"openOnboarding\""],
+  ["index.html", "data-onboarding-action=\"idea\""],
+  ["index.html", "data-onboarding-action=\"manual\""],
+  ["index.html", "data-onboarding-action=\"existing\""],
+  ["index.html", "data-onboarding-action=\"demo\""],
+  ["index.html", "one-stop-guide"],
+  ["index.html", "id=\"nextStepBanner\""],
+  ["index.html", "id=\"nextStepAction\""],
+  ["index.html", "id=\"pipelineProgress\""],
+  ["index.html", "id=\"incubationResultPanel\""],
+  ["index.html", "id=\"incubationOpenFile\""],
+  ["index.html", "id=\"pipelinePreflightPanel\""],
+  ["index.html", "data-flow-step=\"prepare\""],
+  ["index.html", "data-flow-step=\"memory\""],
+  ["index.html", "id=\"smartPrimaryAction\""],
+  ["index.html", "id=\"smartPublishAction\""],
+  ["index.html", "id=\"toggleQuickOpen\""],
+  ["index.html", "id=\"toggleAdvancedTools\""],
+  ["index.html", "creation-mode-tabs"],
+  ["index.html", "灵感孵化"],
+  ["index.html", "精准创建"],
+  ["index.html", "data-creation-mode=\"idea\""],
+  ["index.html", "data-creation-mode=\"manual\""],
+  ["app.js", "function renderSmartGuide"],
+  ["app.js", "function nextStepState"],
+  ["app.js", "function renderNextStep"],
+  ["app.js", "function runNextStepAction"],
+  ["app.js", "function setPipelineProgress"],
+  ["app.js", "function renderPipelineProgress"],
+  ["app.js", "function extractIncubationSummary"],
+  ["app.js", "function renderIncubationResult"],
+  ["app.js", "function pipelinePreflightState"],
+  ["app.js", "function renderPipelinePreflight"],
+  ["app.js", "function runSmartPrimaryAction"],
+  ["app.js", "function openOnboarding"],
+  ["app.js", "function closeOnboarding"],
+  ["app.js", "function handleOnboardingAction"],
+  ["app.js", "function maybeShowOnboarding"],
+  ["app.js", "function toggleAdvancedTools"],
+  ["app.js", "function setCreationMode"],
+  ["app.js", "function guideToIdeaInput"],
+  ["app.js", "function guideToProjectStart"],
+  ["app.js", "function guideToChapterBrief"],
+  ["app.js", "function openGuidedToolPanel"],
+  ["app.js", "function guideToStyleInput"],
+  ["app.js", "function guideToKnowledgeInput"],
+  ["app.js", "function guideToSyncReviewItems"],
+  ["app.js", "function guideToLatestResult"],
+  ["app.js", "function guideToVersionHistory"],
+  ["styles.css", ".one-stop-guide"],
+  ["styles.css", ".next-step-banner"],
+  ["styles.css", ".incubation-result-panel"],
+  ["styles.css", ".preflight-panel"],
+  ["styles.css", ".pipeline-progress"],
+  ["styles.css", ".flow-step.active"],
+  ["styles.css", ".flow-step.done"],
+  ["styles.css", ".onboarding-overlay"],
+  ["styles.css", ".onboarding-card"],
+  ["styles.css", ".onboarding-choice"],
+  ["styles.css", ".advanced-tools-collapsed"],
+  ["styles.css", ".creation-mode-tabs"],
+  ["styles.css", ".needs-attention"],
+  ["styles.css", "grid-template-columns: minmax(240px, 1.25fr) minmax(220px, 1fr) minmax(160px, 0.65fr)"],
+  ["styles.css", "z-index: 50"],
+  ["styles.css", "z-index: 60"],
   ["index.html", "rel=\"icon\""],
   ["index.html", "/icons/open-book.svg"],
   ["index.html", "brand-icon"],
@@ -256,6 +322,19 @@ const requiredUiMarkers = [
   ["styles.css", ".tool-panel-toggle"]
 ];
 
+const forbiddenUnguidedGuards = [
+  "return setStatus(\"请先选择项目。\", \"error\")",
+  "return setStatus(\"请先打开一个正文文件。\", \"error\")",
+  "return setStatus(\"请至少勾选一项同步内容。\", \"error\")",
+  "return setStatus(\"还没有可对照的历史版本。\", \"error\")",
+  "return setStatus(\"还没有可打开的结果文件。\", \"error\")"
+];
+
+const forbiddenLayoutMarkers = [
+  ".advanced-tools-collapsed [data-tool-panel=\"chapter-board\"].tool-panel-collapsed",
+  ".advanced-tools-collapsed [data-tool-panel=\"sync-review\"].tool-panel-collapsed"
+];
+
 const forbiddenUiMarkers = [
   ["index.html", "data-tool-panel=\"ai-settings\""],
   ["index.html", "data-tool-panel=\"idea\""],
@@ -299,9 +378,12 @@ const presentForbiddenUiMarkers = forbiddenUiMarkers
   })
   .map(([file, marker]) => `${file}:${marker}`);
 
-if (missing.length || missingScripts.length || missingUiMarkers.length || presentForbiddenUiMarkers.length) {
-  console.error(JSON.stringify({ ok: false, missing, missingScripts, missingUiMarkers, presentForbiddenUiMarkers }, null, 2));
+const presentUnguidedGuards = forbiddenUnguidedGuards.filter((marker) => appJs.includes(marker));
+const presentForbiddenLayoutMarkers = forbiddenLayoutMarkers.filter((marker) => stylesCss.includes(marker));
+
+if (missing.length || missingScripts.length || missingUiMarkers.length || presentForbiddenUiMarkers.length || presentUnguidedGuards.length || presentForbiddenLayoutMarkers.length) {
+  console.error(JSON.stringify({ ok: false, missing, missingScripts, missingUiMarkers, presentForbiddenUiMarkers, presentUnguidedGuards, presentForbiddenLayoutMarkers }, null, 2));
   process.exit(1);
 }
 
-console.log(JSON.stringify({ ok: true, checkedFiles: required.length, checkedScripts: scripts.length, checkedUiMarkers: requiredUiMarkers.length, checkedForbiddenUiMarkers: forbiddenUiMarkers.length }, null, 2));
+console.log(JSON.stringify({ ok: true, checkedFiles: required.length, checkedScripts: scripts.length, checkedUiMarkers: requiredUiMarkers.length, checkedForbiddenUiMarkers: forbiddenUiMarkers.length, checkedUnguidedGuards: forbiddenUnguidedGuards.length, checkedLayoutGuards: forbiddenLayoutMarkers.length }, null, 2));

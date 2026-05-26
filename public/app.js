@@ -26,6 +26,11 @@ const state = {
   activeSyncReview: null,
   activeSyncPreview: null,
   snapshots: [],
+  incubationResult: null,
+  pipelineProgress: {
+    step: "",
+    status: "idle"
+  },
   activeToolGroup: "write",
   activeToolPanel: "chapter-board",
   autosaveTimer: null,
@@ -34,12 +39,19 @@ const state = {
     leftCollapsed: false,
     rightCollapsed: false,
     newProjectCollapsed: false,
-    moreToolsOpen: false
+    moreToolsOpen: false,
+    quickOpenCollapsed: true,
+    advancedToolsCollapsed: true,
+    projectActionsOpen: false,
+    creationMode: "idea"
   }
 };
 
 const el = {
   appShell: document.querySelector(".app-shell"),
+  onboardingOverlay: document.querySelector("#onboardingOverlay"),
+  openOnboarding: document.querySelector("#openOnboarding"),
+  skipOnboarding: document.querySelector("#skipOnboarding"),
   refreshProjects: document.querySelector("#refreshProjects"),
   projectName: document.querySelector("#projectName"),
   projectGenre: document.querySelector("#projectGenre"),
@@ -60,6 +72,8 @@ const el = {
   toggleAiConfig: document.querySelector("#toggleAiConfig"),
   topAiConfig: document.querySelector("#topAiConfig"),
   codexConfig: document.querySelector("#codexConfig"),
+  toggleProjectActions: document.querySelector("#toggleProjectActions"),
+  projectActionsMenu: document.querySelector("#projectActionsMenu"),
   openProjectFolder: document.querySelector("#openProjectFolder"),
   copyProjectPath: document.querySelector("#copyProjectPath"),
   saveAiSettings: document.querySelector("#saveAiSettings"),
@@ -82,6 +96,32 @@ const el = {
   fileSelect: document.querySelector("#fileSelect"),
   chapterBrief: document.querySelector("#chapterBrief"),
   draft: document.querySelector("#draft"),
+  smartGuideTitle: document.querySelector("#smartGuideTitle"),
+  smartGuideText: document.querySelector("#smartGuideText"),
+  smartPrimaryAction: document.querySelector("#smartPrimaryAction"),
+  smartPublishAction: document.querySelector("#smartPublishAction"),
+  smartAdvancedAction: document.querySelector("#smartAdvancedAction"),
+  nextStepTitle: document.querySelector("#nextStepTitle"),
+  nextStepText: document.querySelector("#nextStepText"),
+  nextStepAction: document.querySelector("#nextStepAction"),
+  incubationResultPanel: document.querySelector("#incubationResultPanel"),
+  incubationResultTitle: document.querySelector("#incubationResultTitle"),
+  incubationResultStatus: document.querySelector("#incubationResultStatus"),
+  incubationSummary: document.querySelector("#incubationSummary"),
+  incubationOpenFile: document.querySelector("#incubationOpenFile"),
+  incubationRerun: document.querySelector("#incubationRerun"),
+  incubationStartChapter: document.querySelector("#incubationStartChapter"),
+  pipelineProgress: document.querySelector("#pipelineProgress"),
+  pipelinePreflightPanel: document.querySelector("#pipelinePreflightPanel"),
+  preflightTitle: document.querySelector("#preflightTitle"),
+  preflightText: document.querySelector("#preflightText"),
+  preflightItems: document.querySelector("#preflightItems"),
+  preflightProjectAction: document.querySelector("#preflightProjectAction"),
+  preflightBriefAction: document.querySelector("#preflightBriefAction"),
+  preflightAiAction: document.querySelector("#preflightAiAction"),
+  toggleQuickOpen: document.querySelector("#toggleQuickOpen"),
+  quickOpenBody: document.querySelector("#quickOpenBody"),
+  toggleAdvancedTools: document.querySelector("#toggleAdvancedTools"),
   modelName: document.querySelector("#modelName"),
   endpoint: document.querySelector("#endpoint"),
   ideaInput: document.querySelector("#ideaInput"),
@@ -187,6 +227,51 @@ function setStatus(message, type = "") {
   el.status.className = `status ${type}`.trim();
 }
 
+function openOnboarding() {
+  if (!el.onboardingOverlay) return;
+  el.onboardingOverlay.hidden = false;
+}
+
+function closeOnboarding({ remember = true } = {}) {
+  if (!el.onboardingOverlay) return;
+  el.onboardingOverlay.hidden = true;
+  if (remember) localStorage.setItem("novelStudioOnboardingSeen", "1");
+}
+
+function maybeShowOnboarding() {
+  const seen = localStorage.getItem("novelStudioOnboardingSeen") === "1";
+  if (!seen) openOnboarding();
+}
+
+async function handleOnboardingAction(action) {
+  closeOnboarding();
+  state.layout.leftCollapsed = false;
+  state.layout.rightCollapsed = false;
+  state.layout.quickOpenCollapsed = true;
+  state.layout.advancedToolsCollapsed = true;
+  state.activeToolGroup = "write";
+  state.activeToolPanel = "chapter-board";
+  if (action === "manual") {
+    setCreationMode("manual");
+    highlightAndFocus(el.projectName, el.projectName?.closest(".creation-start-panel"), "填写项目名和初始设定，再点击创建小说项目。", "");
+    return;
+  }
+  if (action === "existing") {
+    setCreationMode("idea");
+    renderLayoutState();
+    const target = state.projects.length ? el.projectList : el.ideaInput;
+    const panel = state.projects.length ? el.projectList?.closest(".panel") : target?.closest(".creation-start-panel");
+    highlightAndFocus(target, panel, state.projects.length ? "从左侧项目列表选择一本书，进入后直接写下一章。" : "还没有项目。先写几句想法，系统会帮你生成项目方案。", "");
+    return;
+  }
+  if (action === "demo") {
+    await createDemoProject();
+    return;
+  }
+  setCreationMode("idea");
+  highlightAndFocus(el.ideaInput, el.ideaInput?.closest(".creation-start-panel"), "把主角、背景、冲突或几个画面写在这里，再点击生成项目方案。", "");
+}
+
 function updateAiModeVisibility() {
   const mode = el.pipelineRunner?.value || "codex";
   for (const node of document.querySelectorAll("[data-ai-mode]")) {
@@ -209,6 +294,10 @@ function loadLayoutState() {
     state.layout.rightCollapsed = Boolean(saved.rightCollapsed);
     state.layout.newProjectCollapsed = Boolean(saved.newProjectCollapsed);
     state.layout.moreToolsOpen = Boolean(saved.moreToolsOpen);
+    state.layout.quickOpenCollapsed = saved.quickOpenCollapsed !== false;
+    state.layout.advancedToolsCollapsed = saved.advancedToolsCollapsed !== false;
+    state.layout.projectActionsOpen = false;
+    state.layout.creationMode = "idea";
     state.activeToolGroup = normalizeToolboxGroup(saved.activeToolGroup || "write");
     state.activeToolPanel = saved.activeToolPanel || "chapter-board";
   } catch {
@@ -216,6 +305,10 @@ function loadLayoutState() {
     state.layout.rightCollapsed = false;
     state.layout.newProjectCollapsed = false;
     state.layout.moreToolsOpen = false;
+    state.layout.quickOpenCollapsed = true;
+    state.layout.advancedToolsCollapsed = true;
+    state.layout.projectActionsOpen = false;
+    state.layout.creationMode = "idea";
     state.activeToolGroup = "write";
     state.activeToolPanel = "chapter-board";
   }
@@ -227,6 +320,8 @@ function saveLayoutState() {
     rightCollapsed: state.layout.rightCollapsed,
     newProjectCollapsed: state.layout.newProjectCollapsed,
     moreToolsOpen: state.layout.moreToolsOpen,
+    quickOpenCollapsed: state.layout.quickOpenCollapsed,
+    advancedToolsCollapsed: state.layout.advancedToolsCollapsed,
     activeToolGroup: state.activeToolGroup,
     activeToolPanel: state.activeToolPanel
   }));
@@ -236,17 +331,27 @@ function renderLayoutState() {
   el.appShell?.classList.toggle("left-collapsed", state.layout.leftCollapsed);
   el.appShell?.classList.toggle("right-collapsed", state.layout.rightCollapsed);
   el.appShell?.classList.toggle("new-project-collapsed", state.layout.newProjectCollapsed);
+  for (const button of document.querySelectorAll("[data-creation-mode]")) {
+    const active = button.dataset.creationMode === state.layout.creationMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  }
+  for (const panel of document.querySelectorAll("[data-creation-panel]")) {
+    panel.hidden = panel.dataset.creationPanel !== state.layout.creationMode;
+  }
+  document.querySelector(".quick-open")?.classList.toggle("quick-open-collapsed", state.layout.quickOpenCollapsed);
+  document.querySelector(".toolbox")?.classList.toggle("advanced-tools-collapsed", state.layout.advancedToolsCollapsed);
   if (el.toggleLeftPane) {
     el.toggleLeftPane.setAttribute("aria-pressed", String(state.layout.leftCollapsed));
-    el.toggleLeftPane.textContent = state.layout.leftCollapsed ? "显示项目栏" : "隐藏项目栏";
-    el.toggleLeftPane.title = state.layout.leftCollapsed ? "显示项目栏" : "隐藏项目栏";
-    el.toggleLeftPane.setAttribute("aria-label", state.layout.leftCollapsed ? "显示项目栏" : "隐藏项目栏");
+    el.toggleLeftPane.textContent = state.layout.leftCollapsed ? "显示项目" : "隐藏项目";
+    el.toggleLeftPane.title = state.layout.leftCollapsed ? "显示项目" : "隐藏项目";
+    el.toggleLeftPane.setAttribute("aria-label", state.layout.leftCollapsed ? "显示项目" : "隐藏项目");
   }
   if (el.toggleRightPane) {
     el.toggleRightPane.setAttribute("aria-pressed", String(state.layout.rightCollapsed));
-    el.toggleRightPane.textContent = state.layout.rightCollapsed ? "显示工具栏" : "隐藏工具栏";
-    el.toggleRightPane.title = state.layout.rightCollapsed ? "显示工具栏" : "隐藏工具栏";
-    el.toggleRightPane.setAttribute("aria-label", state.layout.rightCollapsed ? "显示工具栏" : "隐藏工具栏");
+    el.toggleRightPane.textContent = state.layout.rightCollapsed ? "显示辅助" : "隐藏辅助";
+    el.toggleRightPane.title = state.layout.rightCollapsed ? "显示辅助" : "隐藏辅助";
+    el.toggleRightPane.setAttribute("aria-label", state.layout.rightCollapsed ? "显示辅助" : "隐藏辅助");
   }
   if (el.newProjectBody) {
     el.newProjectBody.hidden = state.layout.newProjectCollapsed;
@@ -259,11 +364,31 @@ function renderLayoutState() {
   if (el.moreToolMenu) {
     el.moreToolMenu.hidden = !state.layout.moreToolsOpen;
   }
+  if (el.projectActionsMenu) {
+    el.projectActionsMenu.hidden = !state.layout.projectActionsOpen;
+  }
+  if (el.toggleProjectActions) {
+    el.toggleProjectActions.setAttribute("aria-expanded", String(state.layout.projectActionsOpen));
+    el.toggleProjectActions.classList.toggle("active", state.layout.projectActionsOpen);
+  }
+  if (el.quickOpenBody) {
+    el.quickOpenBody.hidden = state.layout.quickOpenCollapsed;
+  }
+  if (el.toggleQuickOpen) {
+    el.toggleQuickOpen.setAttribute("aria-expanded", String(!state.layout.quickOpenCollapsed));
+    const hint = el.toggleQuickOpen.querySelector("em");
+    if (hint) hint.textContent = state.layout.quickOpenCollapsed ? "展开立项、总纲、人物、运行结果" : "收起资料入口";
+  }
+  if (el.toggleAdvancedTools) {
+    el.toggleAdvancedTools.setAttribute("aria-expanded", String(!state.layout.advancedToolsCollapsed));
+    el.toggleAdvancedTools.textContent = state.layout.advancedToolsCollapsed ? "展开高级工具" : "收起高级工具";
+  }
   if (el.toggleMoreTools) {
     const isSecondaryGroup = state.activeToolGroup !== "write";
     el.toggleMoreTools.setAttribute("aria-expanded", String(state.layout.moreToolsOpen));
     el.toggleMoreTools.classList.toggle("active", isSecondaryGroup || state.layout.moreToolsOpen);
   }
+  renderSmartGuide();
 }
 
 function togglePane(side, force) {
@@ -279,12 +404,158 @@ function toggleNewProjectPanel(force) {
   saveLayoutState();
 }
 
+function setCreationMode(mode = "idea") {
+  state.layout.creationMode = mode === "manual" ? "manual" : "idea";
+  if (state.layout.creationMode === "manual") {
+    state.layout.newProjectCollapsed = false;
+  }
+  renderLayoutState();
+  saveLayoutState();
+}
+
+function highlightAndFocus(target, container, message, type = "error") {
+  const box = container || target?.closest("label") || target?.closest(".panel");
+  box?.classList.remove("needs-attention");
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
+  } else {
+    box?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+  box?.classList.add("needs-attention");
+  window.setTimeout(() => box?.classList.remove("needs-attention"), 1800);
+  if (message) setStatus(message, type);
+}
+
+function guideToIdeaInput(message = "在左侧“创作起点”的原始思路里写几句，再点击生成项目方案。") {
+  state.layout.leftCollapsed = false;
+  setCreationMode("idea");
+  const target = el.ideaInput;
+  if (!target) return;
+  const panel = target.closest(".creation-start-panel");
+  highlightAndFocus(target, panel, message);
+}
+
+function guideToProjectStart(message = "先在左侧选择已有项目，或在“创作起点”生成/创建一个项目。") {
+  state.layout.leftCollapsed = false;
+  setCreationMode("idea");
+  const target = state.projects.length ? el.projectList : el.ideaInput;
+  const panel = state.projects.length ? el.projectList?.closest(".panel") : target?.closest(".creation-start-panel");
+  highlightAndFocus(target, panel, message);
+}
+
+function guideToManualProjectName() {
+  state.layout.leftCollapsed = false;
+  setCreationMode("manual");
+  highlightAndFocus(el.projectName, el.projectName?.closest(".creation-start-panel"), "在左侧“精准创建”里填写项目名，再创建小说项目。");
+}
+
+function guideToChapterBrief(message = "在中间的“这一章想写什么”里写几句：本章要发生什么、冲突是什么、结尾留下什么。") {
+  state.layout.leftCollapsed = false;
+  highlightAndFocus(el.chapterBrief, el.chapterBrief?.closest(".brief-box"), message);
+}
+
+function openGuidedToolPanel(group, panelId, target, message) {
+  state.layout.rightCollapsed = false;
+  state.layout.advancedToolsCollapsed = false;
+  setToolboxGroup(group);
+  setActiveToolPanel(panelId);
+  renderLayoutState();
+  window.requestAnimationFrame(() => {
+    const panel = document.querySelector(`[data-tool-panel="${panelId}"]`);
+    highlightAndFocus(target || panel, panel, message);
+  });
+}
+
+function guideToSearchInput() {
+  openGuidedToolPanel("write", "global-search", el.globalSearchInput, "在右侧“全局搜索”里输入关键词。");
+}
+
+function guideToKnowledgeInput() {
+  openGuidedToolPanel("system", "knowledge", el.knowledgeNote, "在右侧“添加写作规则/资料”上传文件，或粘贴规则、限制和写作要求。");
+}
+
+function guideToStyleInput() {
+  openGuidedToolPanel("quality", "style-lab", el.styleSample, "在右侧“文风模仿”粘贴你自己的样稿或本项目样稿。");
+}
+
+function guideToChapterFile() {
+  openGuidedToolPanel("write", "chapter-board", el.chapterBoard, "先从右侧章节看板打开一个正文文件，或保存当前章节。");
+}
+
+function guideToVersionHistory(message = "还没有可对照的历史版本。先保存或修订章节，历史版本会出现在这里。") {
+  openGuidedToolPanel("revision", "versions", el.versionPanel, message);
+}
+
+function guideToLatestResult(prefix = "") {
+  state.layout.quickOpenCollapsed = false;
+  renderLayoutState();
+  const label = prefix === "08_资料投喂"
+    ? "资料投喂"
+    : prefix === "09_运行时"
+      ? "章节流水线"
+      : prefix === "07_Codex"
+        ? "Codex 运行"
+        : "运行";
+  const target = el.quickOpenBody || document.querySelector(".quick-open");
+  highlightAndFocus(target, document.querySelector(".quick-open"), `还没有可打开的${label}结果。先完成对应流程，生成的结果会出现在资料中心。`);
+}
+
+function guideToSyncReviewItems(box, message = "请先在“确认本章记忆”里勾选需要写入长期记忆的内容。") {
+  state.layout.rightCollapsed = false;
+  state.layout.advancedToolsCollapsed = false;
+  setToolboxGroup("write");
+  setActiveToolPanel("sync-review");
+  renderLayoutState();
+  window.requestAnimationFrame(() => {
+    const target = box?.querySelector("[data-sync-leaf]") || box?.querySelector(".sync-review-tree") || box || el.syncReviewPanel;
+    highlightAndFocus(target, box || el.syncReviewPanel, message);
+  });
+}
+
+function guideToConflictAnalysis(message = "当前还没有可处理的记忆冲突。先运行“分析记忆冲突”，结果会显示在这里。") {
+  openGuidedToolPanel("revision", "revision-publish", el.workflowPanel, message);
+}
+
+function guideToMissingFile(file) {
+  state.layout.quickOpenCollapsed = false;
+  renderLayoutState();
+  highlightAndFocus(
+    el.quickOpenBody || document.querySelector(".quick-open"),
+    document.querySelector(".quick-open"),
+    `当前项目里还没有这个文件：${file}。先运行对应流程，生成后可从资料中心打开。`
+  );
+}
+
 function toggleAiConfig(force) {
   if (!el.topAiConfig || !el.toggleAiConfig) return;
   const shouldOpen = typeof force === "boolean" ? force : el.topAiConfig.hidden;
   el.topAiConfig.hidden = !shouldOpen;
   el.toggleAiConfig.setAttribute("aria-expanded", String(shouldOpen));
   el.toggleAiConfig.classList.toggle("active", shouldOpen);
+}
+
+function toggleProjectActions(force) {
+  state.layout.projectActionsOpen = typeof force === "boolean" ? force : !state.layout.projectActionsOpen;
+  renderLayoutState();
+  saveLayoutState();
+}
+
+function toggleQuickOpen(force) {
+  state.layout.quickOpenCollapsed = typeof force === "boolean" ? force : !state.layout.quickOpenCollapsed;
+  renderLayoutState();
+  saveLayoutState();
+}
+
+function toggleAdvancedTools(force) {
+  state.layout.advancedToolsCollapsed = typeof force === "boolean" ? force : !state.layout.advancedToolsCollapsed;
+  if (state.layout.advancedToolsCollapsed) {
+    state.activeToolGroup = "write";
+    state.activeToolPanel = "chapter-board";
+  }
+  renderLayoutState();
+  setToolboxGroup(state.activeToolGroup);
+  saveLayoutState();
 }
 
 function toggleMoreTools(force) {
@@ -303,7 +574,7 @@ function initializeToolPanels() {
     button.className = "tool-panel-toggle";
     button.dataset.toolPanelToggle = panel.dataset.toolPanel;
     button.innerHTML = `<span>${escapeHtml(title)}</span><em>展开</em>`;
-    button.addEventListener("click", () => setActiveToolPanel(panel.dataset.toolPanel));
+    button.addEventListener("click", () => toggleActiveToolPanel(panel.dataset.toolPanel));
     heading.replaceWith(button);
   }
 }
@@ -316,12 +587,17 @@ function visibleToolPanels(group = state.activeToolGroup) {
   });
 }
 
-function setActiveToolPanel(panelId) {
+function setActiveToolPanel(panelId, options = {}) {
   const visiblePanels = visibleToolPanels();
   const fallback = visiblePanels[0]?.dataset.toolPanel || "";
-  state.activeToolPanel = visiblePanels.some((panel) => panel.dataset.toolPanel === panelId)
-    ? panelId
-    : fallback;
+  const allowEmpty = Boolean(options.allowEmpty);
+  if (allowEmpty && !panelId) {
+    state.activeToolPanel = "";
+  } else {
+    state.activeToolPanel = visiblePanels.some((panel) => panel.dataset.toolPanel === panelId)
+      ? panelId
+      : fallback;
+  }
   for (const panel of document.querySelectorAll("[data-tool-panel]")) {
     const isActive = panel.dataset.toolPanel === state.activeToolPanel;
     panel.classList.toggle("tool-panel-active", isActive);
@@ -335,6 +611,15 @@ function setActiveToolPanel(panelId) {
     }
   }
   saveLayoutState();
+}
+
+function toggleActiveToolPanel(panelId) {
+  if (state.activeToolPanel === panelId) {
+    state.activeToolPanel = "";
+    setActiveToolPanel("", { allowEmpty: true });
+    return;
+  }
+  setActiveToolPanel(panelId);
 }
 
 function setToolboxGroup(group = "write") {
@@ -482,6 +767,7 @@ function renderFiles() {
 function renderProjectMeta() {
   if (!state.activeProject) {
     el.projectMeta.textContent = "选择或创建项目后开始写作";
+    renderSmartGuide();
     return;
   }
   const chapterCount = state.files.filter((file) => file.startsWith("01_正文/")).length;
@@ -489,6 +775,349 @@ function renderProjectMeta() {
   const runner = state.activeProject.runner === "model" ? "本地模型接口" : "Codex 直连";
   const assistant = state.activeProject.archiveAssistantName || "未设置助手";
   el.projectMeta.textContent = `${state.activeProject.id} · ${runner} · ${assistant} · ${state.files.length} 个文件 · ${chapterCount} 章正文 · ${codexCount} 个 Codex 产物`;
+  renderSmartGuide();
+}
+
+function smartGuideState() {
+  if (!state.activeProject) {
+    const hasIdea = Boolean(el.ideaInput?.value.trim() || el.projectPremise?.value.trim());
+    return {
+      title: hasIdea ? "先把想法变成可写项目" : "从一个想法开始",
+      text: hasIdea
+        ? "点击主按钮后，会自动创建项目并生成书名、类型、标签、封面描述、主角方案和前三章启动方案。"
+        : "在左侧写几句原始思路，不需要完整大纲；系统会先帮你整理成立项建议。",
+      primary: hasIdea ? "生成立项建议" : "填写创意后开始",
+      primaryDisabled: false,
+      publishDisabled: true
+    };
+  }
+  const chapterCount = state.files.filter((file) => file.startsWith("01_正文/")).length;
+  const hasBrief = Boolean(el.chapterBrief?.value.trim());
+  const hasDraft = Boolean(el.draft?.value.trim());
+  const hasSyncReview = Boolean(state.activeSyncReview || state.workflowResult?.syncReviews?.length);
+  if (hasSyncReview) {
+    return {
+      title: "本章已生成，先确认记忆同步",
+      text: "系统已经整理出本章可能需要写入长期记忆的内容。确认后再写下一章，可以减少人物、伏笔和读者承诺前后打架。",
+      primary: "确认本章记忆",
+      primaryDisabled: false,
+      publishDisabled: false
+    };
+  }
+  if (hasBrief || hasDraft || state.activeFile) {
+    return {
+      title: "继续处理当前章节",
+      text: "主按钮会按当前 AI 执行方式生成或修订这一章，文风、资料和长期记忆会自动进入流程。",
+      primary: "生成/修订本章",
+      primaryDisabled: false,
+      publishDisabled: chapterCount === 0
+    };
+  }
+  return {
+    title: chapterCount ? "选择章节或写下一章" : "开始写第一章",
+    text: chapterCount
+      ? "从右侧章节看板选择章节，或在下面填写“这一章想写什么”后直接生成下一章。"
+      : "填写“这一章想写什么”，说明开场、冲突、信息增量和结尾钩子；主按钮会完成整章生成闭环。",
+    primary: chapterCount ? "写下一章" : "开始第一章",
+    primaryDisabled: false,
+    publishDisabled: chapterCount === 0
+  };
+}
+
+function nextStepState() {
+  if (!state.activeProject) {
+    const hasIdea = Boolean(el.ideaInput?.value.trim() || el.projectPremise?.value.trim());
+    return hasIdea
+      ? {
+          title: "把想法变成项目",
+          text: "你已经写了初始想法。下一步生成项目方案，系统会整理书名、类型、标签和前三章启动建议。",
+          action: "incubate",
+          label: "生成项目方案"
+        }
+      : {
+          title: "先写一个想法",
+          text: "不用完整大纲。写主角、背景、冲突，或几个想看的画面就够了。",
+          action: "idea",
+          label: "去填写想法"
+        };
+  }
+  const hasSyncReview = Boolean(state.activeSyncReview || state.workflowResult?.syncReviews?.length);
+  if (hasSyncReview) {
+    return {
+      title: "确认本章记忆",
+      text: "本章生成后，先确认哪些信息要写入长期记忆，再继续下一章。",
+      action: "sync",
+      label: "去确认记忆"
+    };
+  }
+  const chapterCount = state.files.filter((file) => file.startsWith("01_正文/")).length;
+  const hasBrief = Boolean(el.chapterBrief?.value.trim());
+  const hasDraft = Boolean(el.draft?.value.trim());
+  if (!hasBrief && !hasDraft && !state.activeFile) {
+    return {
+      title: chapterCount ? "写下一章" : "写第一章",
+      text: "先用几句话写清这一章要发生什么，再让系统生成完整章节。",
+      action: "brief",
+      label: "填写本章想法"
+    };
+  }
+  return {
+    title: "生成这一章",
+    text: "本章信息已经准备好。下一步让系统完成写作、审稿、修订和记忆同步。",
+    action: "pipeline",
+    label: "开始生成"
+  };
+}
+
+function renderNextStep() {
+  if (!el.nextStepTitle || !el.nextStepText || !el.nextStepAction) return;
+  const step = nextStepState();
+  el.nextStepTitle.textContent = step.title;
+  el.nextStepText.textContent = step.text;
+  el.nextStepAction.textContent = step.label;
+  el.nextStepAction.dataset.nextStepAction = step.action;
+}
+
+function compactMarkdownValue(value = "", maxLength = 120) {
+  const text = String(value)
+    .replace(/^#+\s*/g, "")
+    .replace(/^\s*[-*>\d.、]+\s*/g, "")
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
+function extractIncubationSummary(markdown = "", project = state.activeProject) {
+  const lines = String(markdown)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const byLabel = (labels, maxLength = 120) => {
+    for (const label of labels) {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const direct = lines.find((line) => new RegExp(`^(?:[#>*\\-\\d.、\\s]*)(?:\\*\\*)?${escaped}(?:\\*\\*)?\\s*[：:]\\s*.+`).test(line));
+      if (direct) {
+        return compactMarkdownValue(direct.replace(new RegExp(`^.*?${escaped}(?:\\*\\*)?\\s*[：:]\\s*`), ""), maxLength);
+      }
+      const index = lines.findIndex((line) => line.includes(label));
+      if (index >= 0) {
+        const next = lines.slice(index + 1, index + 4).find((line) => !line.startsWith("#"));
+        if (next) return compactMarkdownValue(next, maxLength);
+      }
+    }
+    return "";
+  };
+
+  const chapters = lines
+    .filter((line) => /第[一二三123]章|前三章|开篇|首章/.test(line))
+    .slice(0, 3)
+    .map((line) => compactMarkdownValue(line, 96));
+
+  const tagText = byLabel(["标签", "关键词", "读者标签"], 160);
+  const tags = tagText
+    ? tagText.split(/[，,、/| ]+/).map((tag) => tag.trim()).filter(Boolean).slice(0, 8)
+    : [];
+
+  return {
+    title: byLabel(["书名", "标题", "项目名"], 80) || project?.name || "新小说项目",
+    genre: byLabel(["类型", "题材", "频道"], 80) || project?.genre || "未指定",
+    tags,
+    sellingPoint: byLabel(["一句话", "卖点", "核心卖点", "简介", "故事钩子"], 160),
+    protagonist: byLabel(["主角", "主角方案", "人物"], 140),
+    firstChapters: chapters,
+    cover: byLabel(["封面描述", "封面建议", "封面"], 160),
+    rawSnippet: compactMarkdownValue(lines.slice(0, 8).join(" "), 360)
+  };
+}
+
+function renderIncubationResult(result = state.incubationResult) {
+  if (!el.incubationResultPanel) return;
+  state.incubationResult = result || null;
+  if (!result) {
+    el.incubationResultPanel.hidden = true;
+    return;
+  }
+  const summary = result.summary || extractIncubationSummary(result.output || "", result.project || state.activeProject);
+  const running = result.status === "running";
+  el.incubationResultPanel.hidden = false;
+  el.incubationResultTitle.textContent = running ? "Codex 正在整理项目方案" : summary.title || "项目方案已生成";
+  el.incubationResultStatus.textContent = running ? "生成中" : "可开始第一章";
+  el.incubationSummary.innerHTML = `
+    <div class="summary-main">
+      <div><span>类型</span><strong>${escapeHtml(summary.genre || "未指定")}</strong></div>
+      <div><span>卖点</span><strong>${escapeHtml(summary.sellingPoint || summary.rawSnippet || "已生成完整立项建议，可打开查看。")}</strong></div>
+      <div><span>主角</span><strong>${escapeHtml(summary.protagonist || "打开完整建议查看人物方案。")}</strong></div>
+      <div><span>封面</span><strong>${escapeHtml(summary.cover || "打开完整建议查看封面描述。")}</strong></div>
+    </div>
+    <div class="summary-tags" aria-label="标签">
+      ${(summary.tags?.length ? summary.tags : ["待定"]).map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}
+    </div>
+    <div class="summary-chapters">
+      <span>前三章建议</span>
+      <p>${escapeHtml(summary.firstChapters?.join(" ") || "已生成开篇方向，点击“开始写第一章”会把建议带到本章想法里。")}</p>
+    </div>
+  `;
+}
+
+function openIncubationFile() {
+  const file = state.incubationResult?.file || "00_总控/立项建议.md";
+  return openFileByPath(file);
+}
+
+function rerunIncubation() {
+  return incubateIdea();
+}
+
+function startFirstChapterFromIncubation() {
+  const summary = state.incubationResult?.summary || extractIncubationSummary(state.incubationResult?.output || "");
+  const suggestion = summary.firstChapters?.[0] || summary.sellingPoint || el.ideaInput?.value.trim() || "";
+  if (suggestion && el.chapterBrief && !el.chapterBrief.value.trim()) {
+    el.chapterBrief.value = suggestion;
+  }
+  renderSmartGuide();
+  renderPipelinePreflight(pipelinePreflightState(), false);
+  return guideToChapterBrief("已把立项建议带到“这一章想写什么”。你可以补充冲突、信息增量和结尾钩子后生成。");
+}
+
+function pipelinePreflightState() {
+  const issues = [];
+  const warnings = [];
+  const runner = el.pipelineRunner?.value || "codex";
+  const hasChapterInput = Boolean(el.chapterBrief?.value.trim() || el.draft?.value.trim() || state.activeFile);
+
+  if (!state.activeProject) {
+    issues.push({ key: "project", label: "还没有选择小说项目", action: "先选择或创建项目。" });
+  }
+  if (state.activeProject && !hasChapterInput) {
+    issues.push({ key: "brief", label: "还没有写本章想法", action: "写几句本章要发生的事、冲突和结尾钩子。" });
+  }
+  if (runner === "model" && !el.endpoint?.value.trim()) {
+    issues.push({ key: "ai", label: "本地模型接口为空", action: "填写本地模型接口后再生成。" });
+  }
+  if (runner === "codex") {
+    const codexText = el.codexConfig?.textContent || "";
+    if (/失败|不可用|未找到|无法/.test(codexText)) {
+      issues.push({ key: "ai", label: "Codex 配置读取异常", action: "检查本地 Codex 和 cc-switch 配置。" });
+    } else if (!codexText || /正在读取/.test(codexText)) {
+      warnings.push({ key: "ai", label: "Codex 配置仍在读取", action: "如果生成失败，再打开 AI 执行配置检查。" });
+    }
+  }
+  if (state.activeProject && !state.activeProject.archiveAssistantId) {
+    warnings.push({ key: "assistant", label: "未指定档案助手", action: "系统会使用默认助手继续。" });
+  }
+  if (state.activeProject && !state.files.some((file) => file.includes("项目能力包") || file.includes("文风"))) {
+    warnings.push({ key: "ability", label: "项目能力包或文风资料较少", action: "可先投喂资料或分析文风，也可以先生成正文。" });
+  }
+
+  return { ok: issues.length === 0, runner, issues, warnings };
+}
+
+function renderPipelinePreflight(check = pipelinePreflightState(), forceVisible = true) {
+  if (!el.pipelinePreflightPanel) return;
+  if (check.ok && !forceVisible) {
+    el.pipelinePreflightPanel.hidden = true;
+    return;
+  }
+  el.pipelinePreflightPanel.hidden = false;
+  el.preflightTitle.textContent = check.ok ? "生成前检查通过" : "开始前还差一点";
+  el.preflightText.textContent = check.ok
+    ? "基础条件已就绪，系统会按当前 AI 执行方式生成这一章。"
+    : "补齐下面几项后，就可以生成这一章。";
+  const items = check.ok ? check.warnings : [...check.issues, ...check.warnings];
+  el.preflightItems.innerHTML = items.map((item) => `
+    <li class="${check.issues.some((issue) => issue.key === item.key) ? "blocking" : "warning"}">
+      <strong>${escapeHtml(item.label)}</strong>
+      <span>${escapeHtml(item.action)}</span>
+    </li>
+  `).join("");
+  el.preflightProjectAction.hidden = !check.issues.some((issue) => issue.key === "project");
+  el.preflightBriefAction.hidden = !check.issues.some((issue) => issue.key === "brief");
+  el.preflightAiAction.hidden = !check.issues.some((issue) => issue.key === "ai");
+}
+
+const PIPELINE_STEPS = ["prepare", "plan", "write", "review", "revise", "memory"];
+
+function setPipelineProgress(step = "", status = "idle") {
+  state.pipelineProgress = { step, status };
+  renderPipelineProgress();
+}
+
+function renderPipelineProgress() {
+  if (!el.pipelineProgress) return;
+  const current = state.pipelineProgress?.step || "";
+  const status = state.pipelineProgress?.status || "idle";
+  const currentIndex = PIPELINE_STEPS.indexOf(current);
+  for (const node of el.pipelineProgress.querySelectorAll("[data-flow-step]")) {
+    const index = PIPELINE_STEPS.indexOf(node.dataset.flowStep);
+    const isDone = status === "done" || (currentIndex >= 0 && index >= 0 && index < currentIndex);
+    const isActive = current && node.dataset.flowStep === current && status === "running";
+    const isError = current && node.dataset.flowStep === current && status === "error";
+    node.classList.toggle("done", isDone);
+    node.classList.toggle("active", isActive);
+    node.classList.toggle("error", isError);
+  }
+}
+
+async function runNextStepAction() {
+  const action = el.nextStepAction?.dataset.nextStepAction || nextStepState().action;
+  if (action === "idea") return guideToIdeaInput();
+  if (action === "incubate") return incubateIdea();
+  if (action === "brief") return guideToChapterBrief();
+  if (action === "sync") {
+    state.layout.advancedToolsCollapsed = false;
+    setToolboxGroup("write");
+    setActiveToolPanel("sync-review");
+    return setStatus("已打开“确认本章记忆”。确认后再继续下一章。");
+  }
+  return runPipeline();
+}
+
+function renderSmartGuide() {
+  if (!el.smartGuideTitle || !el.smartGuideText || !el.smartPrimaryAction) return;
+  const guide = smartGuideState();
+  el.smartGuideTitle.textContent = guide.title;
+  el.smartGuideText.textContent = guide.text;
+  el.smartPrimaryAction.textContent = guide.primary;
+  el.smartPrimaryAction.disabled = Boolean(guide.primaryDisabled);
+  if (el.smartPublishAction) {
+    el.smartPublishAction.disabled = Boolean(guide.publishDisabled);
+    el.smartPublishAction.title = guide.publishDisabled ? "先生成至少一章正文后再整理发布" : "运行发布前总检查，并打开发布准备工具";
+  }
+  renderNextStep();
+  renderPipelinePreflight(pipelinePreflightState(), false);
+}
+
+async function runSmartPrimaryAction() {
+  if (!state.activeProject) {
+    if (!el.ideaInput.value.trim() && el.projectPremise?.value.trim()) {
+      el.ideaInput.value = el.projectPremise.value.trim();
+    }
+    if (!el.ideaInput.value.trim()) {
+      return guideToIdeaInput();
+    }
+    return incubateIdea();
+  }
+  const hasSyncReview = Boolean(state.activeSyncReview || state.workflowResult?.syncReviews?.length);
+  if (hasSyncReview) {
+    state.layout.advancedToolsCollapsed = false;
+    setToolboxGroup("write");
+    setActiveToolPanel("sync-review");
+    return setStatus("已打开“确认本章记忆”。确认后再继续下一章。");
+  }
+  if (!el.chapterBrief.value.trim() && !el.draft.value.trim() && !state.activeFile) {
+    return guideToChapterBrief();
+  }
+  return runPipeline();
+}
+
+async function runSmartPublishAction() {
+  if (!state.activeProject) return guideToProjectStart();
+  state.layout.advancedToolsCollapsed = false;
+  setToolboxGroup("publish");
+  setActiveToolPanel("revision-publish");
+  return runFinalPublishCheck();
 }
 
 function fileKind(file) {
@@ -558,9 +1187,9 @@ function renderGlobalSearchResults() {
 }
 
 async function runGlobalSearch() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const query = el.globalSearchInput?.value.trim() || "";
-  if (!query) return setStatus("请输入搜索关键词。", "error");
+  if (!query) return guideToSearchInput();
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/search?q=${encodeURIComponent(query)}`);
     state.searchResults = data.results || [];
@@ -590,9 +1219,9 @@ function taskKindLabel(kind) {
     codex: "Codex 运行",
     "sync-review": "状态同步",
     revision: "修订任务",
-    pipeline: "多阶段流水线",
+    pipeline: "章节生成",
     idea: "创意孵化",
-    knowledge: "资料投喂",
+    knowledge: "写作资料",
     style: "文风模仿",
     quality: "质检任务",
     publish: "发布资料",
@@ -753,7 +1382,7 @@ function renderNarrativeRadar() {
 }
 
 async function runNarrativeRadar() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   try {
     const file = state.activeFile && state.activeFile.startsWith("01_正文/") && !state.activeFile.startsWith("01_正文/历史版本/")
       ? `?file=${encodeURIComponent(state.activeFile)}`
@@ -767,8 +1396,11 @@ async function runNarrativeRadar() {
   }
 }
 
-async function refreshTaskCenter() {
-  if (!state.activeProject) return;
+async function refreshTaskCenter(showGuide = false) {
+  if (!state.activeProject) {
+    if (showGuide) guideToProjectStart("任务中心会读取当前项目的 Codex 与流水线记录。请先选择或创建项目。");
+    return;
+  }
   try {
     state.taskFilters.kind = el.taskKindFilter?.value || "all";
     state.taskFilters.status = el.taskStatusFilter?.value || "all";
@@ -844,6 +1476,11 @@ function setTaskAutoRefresh() {
   if (state.taskAutoRefreshTimer) {
     clearInterval(state.taskAutoRefreshTimer);
     state.taskAutoRefreshTimer = null;
+  }
+  if (el.taskAutoRefresh?.checked && !state.activeProject) {
+    el.taskAutoRefresh.checked = false;
+    guideToProjectStart("任务自动刷新需要先选择一个项目。");
+    return;
   }
   if (el.taskAutoRefresh?.checked) {
     state.taskAutoRefreshTimer = setInterval(() => {
@@ -955,7 +1592,10 @@ function renderStoryBible() {
 }
 
 async function loadStoryBible(showStatus = false) {
-  if (!state.activeProject) return;
+  if (!state.activeProject) {
+    if (showStatus) guideToProjectStart("故事圣经属于当前项目。请先选择或创建项目。");
+    return;
+  }
   if (showStatus) setStatus("正在读取故事圣经...");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/story-bible`);
@@ -972,14 +1612,16 @@ async function loadStoryBible(showStatus = false) {
 }
 
 async function saveStoryBibleEntry() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const item = {
     id: el.storyBibleId?.value.trim() || "",
     name: el.storyBibleName?.value.trim() || "",
     status: el.storyBibleStatus?.value.trim() || "",
     summary: el.storyBibleSummary?.value.trim() || ""
   };
-  if (!item.name && !item.id) return setStatus("请至少填写 ID 或名称。", "error");
+  if (!item.name && !item.id) {
+    return openGuidedToolPanel("quality", "story-bible", el.storyBibleName || el.storyBibleId, "在右侧“故事圣经”里至少填写 ID 或名称。");
+  }
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/story-bible`, {
@@ -1072,12 +1714,13 @@ async function loadProject(id) {
   refreshTaskCenter();
   runDoctor(false);
   setAutosaveStatus("自动保存待机");
-  setStatus("项目已载入。可以选择章节，或填写 brief 生成新章节。");
+  setPipelineProgress("", "idle");
+  setStatus("项目已载入。可以选择章节，或填写“这一章想写什么”来生成新章节。");
 }
 
 async function createProject() {
   const name = el.projectName.value.trim();
-  if (!name) return setStatus("请先填写项目名。", "error");
+  if (!name) return guideToManualProjectName();
   setBusy(true);
   try {
     const data = await api("/api/projects", {
@@ -1171,7 +1814,7 @@ function parseChapterFromFile(file) {
 }
 
 async function saveChapter() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   setBusy(true);
   try {
     const body = {
@@ -1203,9 +1846,22 @@ async function saveChapter() {
 }
 
 async function runPipeline() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  const preflight = pipelinePreflightState();
+  if (!preflight.ok) {
+    renderPipelinePreflight(preflight, true);
+    const firstIssue = preflight.issues[0];
+    if (firstIssue?.key === "project") return guideToProjectStart("生成章节前，先选择或创建一个小说项目。");
+    if (firstIssue?.key === "brief") return guideToChapterBrief("生成章节前，先写几句“这一章想写什么”。");
+    if (firstIssue?.key === "ai") {
+      toggleAiConfig(true);
+      return setStatus("生成章节前，请先检查 AI 执行配置。", "error");
+    }
+    return;
+  }
+  renderPipelinePreflight(preflight, false);
   setBusy(true);
-  setStatus("正在启动多阶段流水线：规划、编排、写作、审计、修订、状态同步。");
+  setPipelineProgress("prepare", "running");
+  setStatus("正在生成这一章：系统会先规划，再写作、审稿、修订和同步记忆。");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/pipeline`, {
       method: "POST",
@@ -1222,7 +1878,8 @@ async function runPipeline() {
       })
     });
     if (data.mode === "codex") {
-    setStatus(`Codex 多阶段流水线已启动，PID：${data.run.pid}。运行时：${data.runtime.runtimeDir}`);
+      setPipelineProgress("write", "running");
+      setStatus(`Codex 章节生成已启动，PID：${data.run.pid}。运行时：${data.runtime.runtimeDir}`);
       refreshTaskCenter();
       pollCodexRun(data.run.runId, data.run.finalFile);
       return;
@@ -1233,8 +1890,10 @@ async function runPipeline() {
     } else {
       el.draft.value = data.output.trim();
     }
-    setStatus(`多阶段流水线完成。最终章节：${data.chapterFile || "未保存"}。阶段产物：${data.runtimeDir}`);
+    setPipelineProgress("memory", "done");
+    setStatus(`这一章已生成。最终章节：${data.chapterFile || "未保存"}。阶段产物：${data.runtimeDir}`);
   } catch (error) {
+    setPipelineProgress(state.pipelineProgress?.step || "prepare", "error");
     setStatus(error.message, "error");
   } finally {
     setBusy(false);
@@ -1246,7 +1905,7 @@ async function incubateIdea() {
     return incubateIdeaWithCodex();
   }
   const idea = el.ideaInput.value.trim() || el.chapterBrief.value.trim();
-  if (!idea) return setStatus("请先填写原始思路。", "error");
+  if (!idea) return guideToIdeaInput();
   setBusy(true);
   setStatus("正在生成立项建议：书名、类型、标签、封面描述、卖点和前三章方案。");
   try {
@@ -1265,6 +1924,13 @@ async function incubateIdea() {
     el.draft.value = data.output.trim();
     state.activeFile = data.file;
     el.fileSelect.value = "";
+    state.incubationResult = {
+      output: data.output || "",
+      file: data.file,
+      project: state.activeProject,
+      summary: extractIncubationSummary(data.output || "", state.activeProject)
+    };
+    renderIncubationResult(state.incubationResult);
     setStatus(`立项建议已生成并写入：${data.file}`);
   } catch (error) {
     setStatus(error.message, "error");
@@ -1275,7 +1941,7 @@ async function incubateIdea() {
 
 async function incubateIdeaWithCodex() {
   const idea = el.ideaInput.value.trim() || el.chapterBrief.value.trim();
-  if (!idea) return setStatus("请先填写原始思路。", "error");
+  if (!idea) return guideToIdeaInput();
   setBusy(true);
   try {
     const project = await ensureProjectForIdea(idea);
@@ -1292,6 +1958,23 @@ async function incubateIdeaWithCodex() {
         activeFile: state.activeFile
       })
     });
+    state.incubationResult = {
+      status: "running",
+      output: "Codex 正在生成立项建议，完成后会写入项目文件。",
+      file: "00_总控/立项建议.md",
+      project,
+      summary: {
+        title: project.name || "新小说项目",
+        genre: project.genre || "未指定",
+        tags: ["生成中"],
+        sellingPoint: idea,
+        protagonist: "",
+        firstChapters: [],
+        cover: "",
+        rawSnippet: idea
+      }
+    };
+    renderIncubationResult(state.incubationResult);
     setStatus(`Codex 创意孵化已启动，PID：${data.run.pid}。日志：${data.run.logFile}`);
     refreshTaskCenter();
     pollCodexRun(data.run.runId, "00_总控/立项建议.md");
@@ -1316,9 +1999,9 @@ async function readKnowledgeFiles() {
 }
 
 async function absorbKnowledge() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const files = await readKnowledgeFiles();
-  if (!files.length) return setStatus("请先上传资料文件，或粘贴补充资料。", "error");
+  if (!files.length) return guideToKnowledgeInput();
 
   setBusy(true);
   setStatus("正在整理资料：会先保存原始资料，再综合判断是否吸收到项目能力中。");
@@ -1334,7 +2017,7 @@ async function absorbKnowledge() {
       })
     });
     if (data.mode === "codex") {
-      setStatus(`Codex 资料投喂已启动，PID：${data.run.pid}。原始资料已保存，等待综合分析。`);
+      setStatus(`Codex 写作资料分析已启动，PID：${data.run.pid}。原始资料已保存，等待综合分析。`);
       refreshTaskCenter();
       pollCodexRun(data.run.runId, data.reportFile || "05_提示词/项目能力包.md");
       return;
@@ -1354,9 +2037,9 @@ async function absorbKnowledge() {
 }
 
 async function analyzeStyleProfile() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const sample = el.styleSample?.value.trim() || "";
-  if (!sample) return setStatus("请先粘贴作者样本或本项目样稿。", "error");
+  if (!sample) return guideToStyleInput();
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/style-profile`, {
@@ -1384,7 +2067,7 @@ async function analyzeStyleProfile() {
 }
 
 async function previewMemoryRecall() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/memory-recall`, {
       method: "POST",
@@ -1425,12 +2108,22 @@ async function pollCodexRun(runId, preferredFile = "") {
       if (status === "running" && attempts < 240) {
         window.setTimeout(tick, 3000);
       } else {
+        setPipelineProgress(status === "failed" || status === "error" ? "write" : "memory", status === "failed" || status === "error" ? "error" : "done");
         await loadProject(projectId);
         await refreshTaskCenter();
         if (preferredFile && state.files.includes(preferredFile)) {
           state.activeFile = preferredFile;
           el.fileSelect.value = preferredFile;
           await loadSelectedFile();
+          if (preferredFile.includes("立项建议")) {
+            state.incubationResult = {
+              output: el.draft?.value || data.final || data.log || "",
+              file: preferredFile,
+              project: state.activeProject,
+              summary: extractIncubationSummary(el.draft?.value || data.final || data.log || "", state.activeProject)
+            };
+            renderIncubationResult(state.incubationResult);
+          }
         }
         setStatus(`Codex 运行状态：${status}。结果和日志保存在 07_Codex。`);
       }
@@ -1442,7 +2135,7 @@ async function pollCodexRun(runId, preferredFile = "") {
 }
 
 async function exportProject(format) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/export`, {
@@ -1465,7 +2158,7 @@ async function exportProject(format) {
 }
 
 async function openProjectFolder() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart("先在左侧选择或创建项目，然后再打开项目文件夹。");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/open-folder`, {
       method: "POST",
@@ -1478,7 +2171,7 @@ async function openProjectFolder() {
 }
 
 async function copyProjectPath() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart("先在左侧选择或创建项目，然后再复制项目路径。");
   const path = state.activeProject.rootPath || "";
   if (!path) return setStatus("当前项目路径不可用，请刷新项目。", "error");
   try {
@@ -1491,7 +2184,7 @@ async function copyProjectPath() {
 }
 
 async function saveAiSettings() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart("AI 执行配置会保存到当前项目。请先选择或创建项目。");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/meta`, {
       method: "POST",
@@ -1510,7 +2203,7 @@ async function saveAiSettings() {
 }
 
 async function saveArchiveAssistant() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart("档案助手会绑定到当前项目。请先选择或创建项目。");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/archive-assistant`, {
       method: "POST",
@@ -1603,7 +2296,7 @@ function renderChapterBoard() {
     return;
   }
   if (!chapters.length) {
-    el.chapterBoard.textContent = "暂无章节规划。填写章节号、标题和 brief 后点击“保存章节规划”。";
+    el.chapterBoard.textContent = "暂无章节规划。填写章节号、标题和“这一章想写什么”后点击“保存章节规划”。";
     el.chapterBoard.classList.add("muted");
     return;
   }
@@ -1622,7 +2315,7 @@ function renderChapterBoard() {
     button.innerHTML = `
       <span>${escapeHtml(chapter.status || "未规划")}</span>
       <strong>第${escapeHtml(chapter.no)}章 ${escapeHtml(title)}</strong>
-      <em>${escapeHtml(chapter.brief || "暂无 brief")}</em>
+      <em>${escapeHtml(chapter.brief || "暂无本章想法")}</em>
       <small>${escapeHtml(meta || "点击载入到编辑区")}</small>
     `;
     button.addEventListener("click", () => loadChapterFromBoard(chapter));
@@ -1643,15 +2336,15 @@ async function loadChapterFromBoard(chapter) {
     state.activeFile = "";
     el.fileSelect.value = "";
     el.draft.value = "";
-    setStatus(`已载入第 ${chapter.no} 章规划。可以补充 brief 后运行流水线。`);
+    setStatus(`已载入第 ${chapter.no} 章规划。可以补充“这一章想写什么”后点击生成。`);
   }
   renderChapterBoard();
 }
 
 async function saveChapterPlan() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const no = Number(el.chapterNo.value || 0);
-  if (!no) return setStatus("请先填写章节号。", "error");
+  if (!no) return highlightAndFocus(el.chapterNo, el.chapterNo?.closest(".chapter-toolbar"), "在中间章节信息里填写章节号。");
   setBusy(true);
   try {
     const current = state.chapters.find((chapter) => Number(chapter.no) === no) || {};
@@ -1729,7 +2422,7 @@ function renderSnapshots() {
 }
 
 async function createSnapshot() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart("快照会保存当前项目状态。请先选择或创建项目。");
   setBusy(true);
   setStatus("正在创建项目快照。");
   try {
@@ -1750,7 +2443,7 @@ async function createSnapshot() {
 }
 
 async function restoreSnapshot(snapshotId) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart("先选择项目，再从快照列表恢复。");
   const ok = confirm("恢复快照会用旧版本覆盖当前项目。系统会先自动创建一份恢复前快照，确定继续吗？");
   if (!ok) return;
   setBusy(true);
@@ -1782,7 +2475,7 @@ async function restoreSnapshot(snapshotId) {
 }
 
 async function deleteSnapshot(snapshotId) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart("先选择项目，再管理项目快照。");
   const ok = confirm("确定删除这个快照吗？删除后无法恢复。");
   if (!ok) return;
   setBusy(true);
@@ -1886,7 +2579,7 @@ function renderQualityReport() {
 }
 
 async function runQualityCheck() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   setBusy(true);
   setStatus("正在运行发布前质检...");
   try {
@@ -1915,7 +2608,7 @@ async function runQualityCheck() {
 }
 
 async function runAiQualityCheck() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   setBusy(true);
   const runner = el.pipelineRunner?.value || "codex";
   setStatus(runner === "codex" ? "正在启动 Codex AI 深度复核..." : "正在运行 AI 深度复核...");
@@ -1952,7 +2645,7 @@ async function runAiQualityCheck() {
 }
 
 async function runProseQualityReview() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/prose-quality`, {
@@ -2144,7 +2837,7 @@ function memoryRecallPinPayload(type, item = {}, index = 0) {
 }
 
 async function pinMemoryRecallItem(key) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const item = state.memoryRecallCandidates[key];
   if (!item) return setStatus("没有找到可钉选的召回条目。", "error");
   try {
@@ -2172,7 +2865,7 @@ async function pinMemoryRecallItem(key) {
 }
 
 async function unpinMemoryRecallItem(key) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const item = state.memoryRecallCandidates[key];
   if (!item) return setStatus("没有找到可取消的钉选条目。", "error");
   try {
@@ -2200,7 +2893,7 @@ async function unpinMemoryRecallItem(key) {
 }
 
 async function excludeMemoryRecallItem(key) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const item = state.memoryRecallCandidates[key];
   if (!item) return setStatus("没有找到可排除的召回条目。", "error");
   try {
@@ -2228,7 +2921,7 @@ async function excludeMemoryRecallItem(key) {
 }
 
 async function unexcludeMemoryRecallItem(key) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const item = state.memoryRecallCandidates[key];
   if (!item) return setStatus("没有找到可取消排除的条目。", "error");
   try {
@@ -2429,8 +3122,11 @@ function renderVersions() {
   }
 }
 
-async function refreshVersions() {
-  if (!state.activeProject) return;
+async function refreshVersions(showGuide = false) {
+  if (!state.activeProject) {
+    if (showGuide) guideToProjectStart("历史版本属于当前项目。请先选择或创建项目。");
+    return;
+  }
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/versions`);
     state.versions = data.versions || [];
@@ -2441,8 +3137,9 @@ async function refreshVersions() {
 }
 
 async function compareLatestVersion() {
+  if (!state.activeProject) return guideToProjectStart("版本对照属于当前项目。请先选择或创建项目。");
   if (!state.activeFile || !state.activeFile.startsWith("01_正文/") || state.activeFile.startsWith("01_正文/历史版本/")) {
-    return setStatus("请先打开一个正文文件。", "error");
+    return guideToChapterFile();
   }
   await refreshVersions();
   const currentBase = state.activeFile.split("/").at(-1).replace(/\.(md|txt)$/i, "");
@@ -2450,12 +3147,12 @@ async function compareLatestVersion() {
   const latest = state.versions.find((item) => item.file.includes(normalizedBase))
     || state.versions.find((item) => item.file.includes(currentBase))
     || state.versions[0];
-  if (!latest) return setStatus("还没有可对照的历史版本。", "error");
+  if (!latest) return guideToVersionHistory();
   await diffVersion(latest.file);
 }
 
 async function workflowPost(path, body, successMessage, target = "revision") {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/${path}`, {
@@ -2521,8 +3218,8 @@ async function analyzeConflicts() {
 }
 
 async function createConflictRepairPlan(conflict) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
-  if (!conflict) return setStatus("没有可生成方案的记忆冲突。", "error");
+  if (!state.activeProject) return guideToProjectStart();
+  if (!conflict) return guideToConflictAnalysis();
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/conflicts/repair-plan`, {
@@ -2547,8 +3244,8 @@ async function createConflictRepairPlan(conflict) {
 }
 
 async function applyConflictRepair(conflict) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
-  if (!conflict) return setStatus("没有可应用的记忆冲突修复。", "error");
+  if (!state.activeProject) return guideToProjectStart();
+  if (!conflict) return guideToConflictAnalysis("当前还没有可应用的记忆冲突修复。先生成修复方案，再应用。");
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/conflicts/apply`, {
@@ -2627,7 +3324,7 @@ async function saveCurrentModelPreset() {
 }
 
 async function cloneCurrentProject() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart("先选择要克隆的项目，再创建副本。");
   const name = `${state.activeProject.name}_副本_${new Date().toISOString().slice(0, 10)}`;
   const data = await workflowPost("clone", { name }, "项目已克隆。", "maintenance");
   if (data?.project?.id) {
@@ -2648,7 +3345,7 @@ async function runProjectIntegrityCheck() {
 }
 
 async function diffVersion(versionFile) {
-  if (!state.activeFile) return setStatus("请先打开一个正文文件。", "error");
+  if (!state.activeFile) return guideToChapterFile();
   const data = await workflowPost("versions/diff", { file: state.activeFile, versionFile }, "版本对照已生成。");
   const lines = (data?.diff || []).slice(0, 8).map((row) => `#${row.index} ${row.status}\n- 当前：${row.before?.slice(0, 80) || ""}\n- 版本：${row.after?.slice(0, 80) || ""}`).join("\n\n");
   state.workflowResult = { target: "revision", title: "版本对照", message: lines || "没有差异" };
@@ -2656,7 +3353,7 @@ async function diffVersion(versionFile) {
 }
 
 async function restoreVersion(versionFile) {
-  if (!state.activeFile) return setStatus("请先打开一个正文文件。", "error");
+  if (!state.activeFile) return guideToChapterFile();
   if (!confirm("恢复历史版本会覆盖当前正文，系统会先创建快照和当前版本备份。继续吗？")) return;
   await workflowPost("versions/restore", { versionFile, targetFile: state.activeFile }, "章节历史版本已恢复。");
 }
@@ -3028,7 +3725,7 @@ function renderSyncDiffPreview(box) {
 async function previewSelectedSyncReview(box) {
   if (!state.activeProject || !state.activeSyncReview) return;
   const itemIds = selectedSyncReviewItemIds(box);
-  if (!itemIds.length) return setStatus("请至少勾选一项同步内容。", "error");
+  if (!itemIds.length) return guideToSyncReviewItems(box);
   setStatus("正在预览状态同步差异...");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/sync-review/preview`, {
@@ -3049,7 +3746,7 @@ async function previewSelectedSyncReview(box) {
 async function applySelectedSyncReview(box) {
   if (!state.activeProject || !state.activeSyncReview) return;
   const itemIds = selectedSyncReviewItemIds(box);
-  if (!itemIds.length) return setStatus("请至少勾选一项同步内容。", "error");
+  if (!itemIds.length) return guideToSyncReviewItems(box);
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/sync-review/apply`, {
@@ -3081,7 +3778,10 @@ async function applySelectedSyncReview(box) {
 }
 
 async function runDoctor(showStatus = true) {
-  if (!state.activeProject) return;
+  if (!state.activeProject) {
+    if (showStatus) guideToProjectStart("配置诊断会检查当前项目。请先选择或创建项目。");
+    return;
+  }
   if (showStatus) setStatus("正在诊断项目配置。");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/doctor`);
@@ -3101,7 +3801,7 @@ async function runDoctor(showStatus = true) {
 }
 
 async function runMemorySchemaCheck() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/memory-schema-check`);
     if (el.diagnosticsPanel) {
@@ -3128,7 +3828,7 @@ async function runMemorySchemaCheck() {
 }
 
 async function generateDiagnosticsReport() {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const data = await workflowPost("diagnostics-report", {}, "故障诊断报告已生成。", "maintenance");
   if (el.diagnosticsPanel && data?.reportFile) {
     el.diagnosticsPanel.classList.remove("muted");
@@ -3164,7 +3864,7 @@ function renderDoctor(doctor) {
 }
 
 async function setReviewStatus(status) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart("审核状态会写入当前项目。请先选择或创建项目。");
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/meta`, {
       method: "POST",
@@ -3180,22 +3880,22 @@ async function setReviewStatus(status) {
 }
 
 async function openFileByPath(file) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
-  if (!state.files.includes(file)) return setStatus(`项目里还没有这个文件：${file}`, "error");
+  if (!state.activeProject) return guideToProjectStart();
+  if (!state.files.includes(file)) return guideToMissingFile(file);
   state.activeFile = file;
   el.fileSelect.value = file;
   await loadSelectedFile();
 }
 
 async function openLatestByPrefix(prefix) {
-  if (!state.activeProject) return setStatus("请先选择项目。", "error");
+  if (!state.activeProject) return guideToProjectStart();
   const preferred = prefix === "08_资料投喂"
     ? state.files.filter((file) => file.startsWith(`${prefix}/投喂报告_`))
     : prefix === "09_运行时"
       ? state.files.filter((file) => file.startsWith(`${prefix}/`) && file.endsWith("/trace.json"))
     : state.files.filter((file) => file.startsWith(`${prefix}/`) && file.endsWith("_final.md"));
   const file = preferred.at(-1) || state.files.filter((item) => item.startsWith(`${prefix}/`)).at(-1);
-  if (!file) return setStatus("还没有可打开的结果文件。", "error");
+  if (!file) return guideToLatestResult(prefix);
   await openFileByPath(file);
 }
 
@@ -3208,7 +3908,25 @@ on(el.toggleLeftPane, "click", () => togglePane("left"));
 on(el.toggleRightPane, "click", () => togglePane("right"));
 on(el.toggleNewProject, "click", () => toggleNewProjectPanel());
 on(el.toggleAiConfig, "click", () => toggleAiConfig());
+on(el.toggleProjectActions, "click", () => toggleProjectActions());
 on(el.toggleMoreTools, "click", () => toggleMoreTools());
+on(el.toggleQuickOpen, "click", () => toggleQuickOpen());
+on(el.toggleAdvancedTools, "click", () => toggleAdvancedTools());
+on(el.openOnboarding, "click", openOnboarding);
+on(el.skipOnboarding, "click", () => closeOnboarding());
+on(el.smartAdvancedAction, "click", () => toggleAdvancedTools(false));
+on(el.smartPrimaryAction, "click", runSmartPrimaryAction);
+on(el.smartPublishAction, "click", runSmartPublishAction);
+on(el.nextStepAction, "click", runNextStepAction);
+on(el.incubationOpenFile, "click", openIncubationFile);
+on(el.incubationRerun, "click", rerunIncubation);
+on(el.incubationStartChapter, "click", startFirstChapterFromIncubation);
+on(el.preflightProjectAction, "click", () => guideToProjectStart());
+on(el.preflightBriefAction, "click", () => guideToChapterBrief());
+on(el.preflightAiAction, "click", () => {
+  toggleAiConfig(true);
+  setStatus("已打开 AI 执行配置。", "");
+});
 on(el.pipelineRunner, "change", updateAiModeVisibility);
 on(el.openProjectFolder, "click", openProjectFolder);
 on(el.copyProjectPath, "click", copyProjectPath);
@@ -3229,14 +3947,18 @@ on(el.saveChapterPlan, "click", saveChapterPlan);
 on(el.saveChapter, "click", saveChapter);
 on(el.compareLatestVersion, "click", compareLatestVersion);
 on(el.chapterBrief, "input", scheduleAutosave);
+on(el.chapterBrief, "input", renderSmartGuide);
 on(el.draft, "input", scheduleAutosave);
+on(el.draft, "input", renderSmartGuide);
+on(el.ideaInput, "input", renderSmartGuide);
+on(el.projectPremise, "input", renderSmartGuide);
 on(el.runGlobalSearch, "click", runGlobalSearch);
 on(el.globalSearchInput, "keydown", (event) => {
   if (event.key === "Enter") runGlobalSearch();
 });
-on(el.refreshTaskCenter, "click", refreshTaskCenter);
-on(el.taskKindFilter, "change", refreshTaskCenter);
-on(el.taskStatusFilter, "change", refreshTaskCenter);
+on(el.refreshTaskCenter, "click", () => refreshTaskCenter(true));
+on(el.taskKindFilter, "change", () => refreshTaskCenter(true));
+on(el.taskStatusFilter, "change", () => refreshTaskCenter(true));
 on(el.taskAutoRefresh, "change", setTaskAutoRefresh);
 on(el.runNarrativeRadar, "click", runNarrativeRadar);
 on(el.createSnapshot, "click", createSnapshot);
@@ -3257,7 +3979,7 @@ on(el.cloneProject, "click", cloneCurrentProject);
 on(el.exportPortableProject, "click", exportPortableProject);
 on(el.repairMemoryJson, "click", repairMemoryJson);
 on(el.runProjectIntegrityCheck, "click", runProjectIntegrityCheck);
-on(el.refreshVersions, "click", refreshVersions);
+on(el.refreshVersions, "click", () => refreshVersions(true));
 on(el.incubateIdea, "click", incubateIdea);
 on(el.absorbKnowledge, "click", absorbKnowledge);
 on(el.analyzeStyleProfile, "click", analyzeStyleProfile);
@@ -3277,6 +3999,12 @@ for (const button of document.querySelectorAll("[data-review-status]")) {
 for (const button of document.querySelectorAll("[data-toolbox-group]")) {
   button.addEventListener("click", () => setToolboxGroup(button.dataset.toolboxGroup || "all"));
 }
+for (const button of document.querySelectorAll("[data-creation-mode]")) {
+  button.addEventListener("click", () => setCreationMode(button.dataset.creationMode));
+}
+for (const button of document.querySelectorAll("[data-onboarding-action]")) {
+  button.addEventListener("click", () => handleOnboardingAction(button.dataset.onboardingAction));
+}
 
 loadArchiveAssistants().catch((error) => setStatus(error.message, "error"));
 loadProjects().catch((error) => setStatus(error.message, "error"));
@@ -3293,4 +4021,6 @@ renderNarrativeRadar();
 renderStoryBible();
 renderStyleProfileResult();
 renderMemoryRecallResult();
+renderPipelineProgress();
 setAutosaveStatus("自动保存待机");
+maybeShowOnboarding();

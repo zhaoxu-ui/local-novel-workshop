@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>本地小说工坊</title>
     <link rel="icon" href="/icons/open-book.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=guided-v2" />
   </head>
   <body>
     <main class="app-shell">
@@ -19,41 +19,55 @@
           <button id="refreshProjects" class="icon-button" title="刷新项目">↻</button>
         </div>
 
-        <section class="panel collapsible-panel" id="newProjectPanel">
-          <button id="toggleNewProject" class="panel-collapse-toggle" type="button" aria-expanded="true">
-            <span>新建项目</span>
-            <em>收起</em>
-          </button>
-          <div id="newProjectBody" class="panel-collapse-body">
-            <label>
-              项目名
-              <input id="projectName" placeholder="例如：雾镇旧案" />
-            </label>
-            <label>
-              类型
-              <input id="projectGenre" placeholder="悬疑 / 都市 / 玄幻" />
-            </label>
-            <label>
-              初始创意
-              <textarea id="projectPremise" rows="4" placeholder="一句话卖点、主角、核心困境"></textarea>
-            </label>
-            <label>
-              档案助手
-              <select id="projectAssistant"></select>
-            </label>
-            <button id="createProject" class="primary">创建小说项目</button>
-            <button id="createDemoProject" type="button">创建演示项目</button>
+        <section class="panel creation-start-panel">
+          <div class="creation-start-heading">
+            <h2>创作起点</h2>
+            <p class="hint">从灵感出发，或用完整设定直接建档。</p>
           </div>
-        </section>
-
-        <section class="panel sidebar-idea-panel">
-          <h2>创意孵化</h2>
-          <label>
-            原始思路
-            <textarea id="ideaInput" rows="5" placeholder="随便写：主角、背景、冲突、想要的感觉、几个画面都可以"></textarea>
-          </label>
-          <button id="incubateIdea" class="primary">生成立项建议</button>
-          <div class="hint">读取顶部“AI 执行配置”的默认执行方式。未选择项目时，会先用项目名输入框或原始思路自动创建项目。</div>
+          <div class="creation-mode-tabs" role="tablist" aria-label="创建方式">
+            <button data-creation-mode="idea" class="active" type="button" role="tab" aria-selected="true">
+              <strong>灵感孵化</strong>
+              <span>只有想法</span>
+            </button>
+            <button data-creation-mode="manual" type="button" role="tab" aria-selected="false">
+              <strong>精准创建</strong>
+              <span>已有设定</span>
+            </button>
+          </div>
+          <section class="sidebar-idea-panel creation-mode-panel" data-creation-panel="idea" role="tabpanel">
+            <label>
+              原始思路
+              <textarea id="ideaInput" rows="5" placeholder="主角、背景、冲突、画面感，想到什么写什么"></textarea>
+            </label>
+            <button id="incubateIdea" class="primary">生成项目方案</button>
+            <div class="hint">自动整理书名、类型、标签、封面描述和前三章启动方案。</div>
+          </section>
+          <section class="collapsible-panel creation-mode-panel" id="newProjectPanel" data-creation-panel="manual" role="tabpanel" hidden>
+            <button id="toggleNewProject" class="panel-collapse-toggle" type="button" aria-expanded="true">
+              <span>手动创建</span>
+              <em>收起</em>
+            </button>
+            <div id="newProjectBody" class="panel-collapse-body">
+              <label>
+                项目名
+                <input id="projectName" placeholder="例如：雾镇旧案" />
+              </label>
+              <label>
+                类型
+                <input id="projectGenre" placeholder="悬疑 / 都市 / 玄幻" />
+              </label>
+              <label>
+                初始创意
+                <textarea id="projectPremise" rows="4" placeholder="一句话卖点、主角、核心困境"></textarea>
+              </label>
+              <label>
+                档案助手
+                <select id="projectAssistant"></select>
+              </label>
+              <button id="createProject" class="primary">创建小说项目</button>
+              <button id="createDemoProject" type="button">创建演示项目</button>
+            </div>
+          </section>
         </section>
 
         <section class="panel grow">
@@ -94,30 +108,85 @@
                 <div class="hint ai-mode-block" data-ai-mode="model">本地模型接口支持 Ollama <code>/api/generate</code> 与部分 <code>/v1/chat/completions</code>。</div>
               </div>
             </div>
-            <button id="toggleLeftPane" class="top-pane-toggle" aria-pressed="false">隐藏项目栏</button>
-            <button id="toggleRightPane" class="top-pane-toggle" aria-pressed="false">隐藏工具栏</button>
-            <button id="openProjectFolder">打开项目文件夹</button>
-            <button id="copyProjectPath">复制项目路径</button>
-            <button id="exportTxt">导出 TXT</button>
-            <button id="exportMd">导出 MD</button>
+            <button id="toggleLeftPane" class="top-pane-toggle" aria-pressed="false">隐藏项目</button>
+            <button id="toggleRightPane" class="top-pane-toggle" aria-pressed="false">隐藏辅助</button>
+            <button id="openOnboarding" type="button">新手引导</button>
+            <div class="top-action-group">
+              <button id="toggleProjectActions" type="button" aria-expanded="false">项目操作</button>
+              <div id="projectActionsMenu" class="top-action-menu" hidden>
+                <button id="openProjectFolder">打开项目文件夹</button>
+                <button id="copyProjectPath">复制项目路径</button>
+                <button id="exportTxt">导出 TXT</button>
+                <button id="exportMd">导出 MD</button>
+              </div>
+            </div>
           </div>
         </header>
 
         <div class="main-grid">
           <section class="editor-section">
-            <div class="quick-open" aria-label="常用资料">
-              <span>常用资料</span>
-              <button data-open-file="00_总控/立项建议.md">立项建议</button>
-              <button data-open-file="00_总控/封面与发布资料.md">封面资料</button>
-              <button data-open-file="00_总控/创作总纲.md">创作总纲</button>
-              <button data-open-file="02_人物/主角.md">主角卡</button>
-              <button data-open-file="05_提示词/档案助手.md">档案助手</button>
-              <button data-open-file="05_提示词/项目能力包.md">能力包</button>
-              <button data-open-file="00_总控/author_intent.md">作者意图</button>
-              <button data-open-file="00_总控/current_focus.md">当前焦点</button>
-              <button data-open-latest="08_资料投喂">最新投喂报告</button>
-              <button data-open-latest="09_运行时">最新运行时</button>
-              <button data-open-latest="07_Codex">最新 Codex 结果</button>
+            <section class="one-stop-guide" aria-label="一站式创作流程">
+              <div class="guide-copy">
+                <p class="eyebrow">一站式创作</p>
+                <h2 id="smartGuideTitle">从一个想法到可发布章节</h2>
+                <p id="smartGuideText">先写原始思路，系统会创建项目、生成立项建议；进入章节后，一个按钮完成规划、写作、审稿、修订和状态同步。</p>
+              </div>
+              <div class="guide-steps" aria-label="默认流程">
+                <span>1 立项</span>
+                <span>2 写章</span>
+                <span>3 审核</span>
+                <span>4 发布</span>
+              </div>
+              <div class="guide-actions">
+                <button id="smartPrimaryAction" class="primary" type="button">开始创作</button>
+                <button id="smartPublishAction" type="button">检查并整理发布</button>
+                <button id="smartAdvancedAction" type="button">更多工具</button>
+              </div>
+            </section>
+
+            <section id="nextStepBanner" class="next-step-banner" aria-label="下一步提示">
+              <div>
+                <p class="eyebrow">推荐下一步</p>
+                <h2 id="nextStepTitle">先写一个想法</h2>
+                <p id="nextStepText">在左侧写几句原始思路，系统会帮你整理成项目方案。</p>
+              </div>
+              <button id="nextStepAction" class="primary" type="button">去填写想法</button>
+            </section>
+
+            <section id="incubationResultPanel" class="incubation-result-panel" hidden aria-label="立项建议">
+              <div class="incubation-result-head">
+                <div>
+                  <p class="eyebrow">立项建议</p>
+                  <h2 id="incubationResultTitle">项目方案已生成</h2>
+                </div>
+                <span id="incubationResultStatus" class="result-pill">可开始第一章</span>
+              </div>
+              <div id="incubationSummary" class="incubation-summary"></div>
+              <div class="incubation-actions">
+                <button id="incubationOpenFile" type="button">打开完整建议</button>
+                <button id="incubationRerun" type="button">重新生成方案</button>
+                <button id="incubationStartChapter" class="primary" type="button">开始写第一章</button>
+              </div>
+            </section>
+
+            <div class="quick-open quick-open-collapsed" aria-label="资料中心">
+              <button id="toggleQuickOpen" class="quick-open-toggle" type="button" aria-expanded="false">
+                <span>资料中心</span>
+                <em>展开立项、总纲、人物、运行结果</em>
+              </button>
+              <div id="quickOpenBody" class="quick-open-body">
+                <button data-open-file="00_总控/立项建议.md">立项建议</button>
+                <button data-open-file="00_总控/封面与发布资料.md">封面资料</button>
+                <button data-open-file="00_总控/创作总纲.md">创作总纲</button>
+                <button data-open-file="02_人物/主角.md">主角卡</button>
+                <button data-open-file="05_提示词/档案助手.md">档案助手</button>
+                <button data-open-file="05_提示词/项目能力包.md">能力包</button>
+                <button data-open-file="00_总控/author_intent.md">作者意图</button>
+                <button data-open-file="00_总控/current_focus.md">当前焦点</button>
+                <button data-open-latest="08_资料投喂">最新投喂报告</button>
+                <button data-open-latest="09_运行时">最新运行时</button>
+                <button data-open-latest="07_Codex">最新 Codex 结果</button>
+              </div>
             </div>
 
             <div class="chapter-toolbar">
@@ -137,21 +206,41 @@
 
             <section class="pipeline-dock" aria-label="生成流水线">
               <div>
-                <h2>多阶段流水线</h2>
-                <p>规划、编排、写作、审计、修订、状态同步会按项目规则统一执行。</p>
+                <h2>生成这一章</h2>
+                <p>系统会自动规划、写作、审稿、修订，并把重要信息同步到项目记忆。</p>
               </div>
-              <button id="runPipeline" class="primary">运行多阶段流水线</button>
+              <button id="runPipeline" class="primary">生成这一章</button>
+              <div id="pipelineProgress" class="pipeline-progress" aria-label="章节生成进度">
+                <span class="flow-step" data-flow-step="prepare">准备资料</span>
+                <span class="flow-step" data-flow-step="plan">规划</span>
+                <span class="flow-step" data-flow-step="write">写作</span>
+                <span class="flow-step" data-flow-step="review">审稿</span>
+                <span class="flow-step" data-flow-step="revise">修订</span>
+                <span class="flow-step" data-flow-step="memory">同步记忆</span>
+              </div>
+              <div id="pipelinePreflightPanel" class="preflight-panel" hidden>
+                <div>
+                  <strong id="preflightTitle">开始前还差一点</strong>
+                  <p id="preflightText">补齐下面几项后，就可以生成这一章。</p>
+                </div>
+                <ul id="preflightItems"></ul>
+                <div class="preflight-actions">
+                  <button id="preflightProjectAction" type="button">选择或创建项目</button>
+                  <button id="preflightBriefAction" type="button">填写本章想法</button>
+                  <button id="preflightAiAction" type="button">检查 AI 配置</button>
+                </div>
+              </div>
               <div id="status" class="status">准备就绪</div>
             </section>
 
             <label class="brief-box">
-              本章 brief
-              <textarea id="chapterBrief" rows="5" placeholder="本章任务、开场钩子、冲突、信息增量、结尾钩子"></textarea>
+              这一章想写什么
+              <textarea id="chapterBrief" rows="5" placeholder="例如：主角第一次进案发地，发现一个不该存在的人影，结尾留下新疑点"></textarea>
             </label>
 
             <label class="draft-box">
               正文 / 修订结果
-              <textarea id="draft" spellcheck="false" placeholder="选择项目后，可以在这里写草稿，或通过多阶段流水线生成。"></textarea>
+              <textarea id="draft" spellcheck="false" placeholder="选择项目后，可以在这里写草稿，或点击“生成这一章”。"></textarea>
             </label>
             <div class="editor-actions">
               <button id="saveChapterPlan">保存章节规划</button>
@@ -161,7 +250,14 @@
             </div>
           </section>
 
-          <aside class="toolbox">
+          <aside class="toolbox advanced-tools-collapsed">
+            <div class="toolbox-heading">
+              <div>
+                <p class="eyebrow">辅助面板</p>
+                <h2>章节与结果</h2>
+              </div>
+              <button id="toggleAdvancedTools" type="button" aria-expanded="false">展开高级工具</button>
+            </div>
             <div class="toolbox-tabs" id="toolboxTabs" aria-label="工具分组">
               <button data-toolbox-group="write" class="active">写作流程</button>
               <button id="toggleMoreTools" class="more-tools-button" type="button" aria-expanded="false">更多工具</button>
@@ -355,7 +451,7 @@
             </section>
 
             <section class="panel compact-panel" data-tool-group="project system" data-tool-panel="knowledge">
-              <h2>资料投喂</h2>
+              <h2>添加写作规则/资料</h2>
               <label>
                 上传规则/限制文件
                 <input id="knowledgeFiles" type="file" multiple accept=".txt,.md,.json,.csv,.yaml,.yml" />
@@ -385,12 +481,12 @@
             <section class="panel compact-panel" data-tool-group="project quality" data-tool-panel="memory-recall">
               <h2>召回调试</h2>
               <button id="previewMemoryRecall" class="primary">预览本章召回</button>
-              <div class="hint">按当前章节号、标题、brief 和正文草稿预览 AI 写作前会读取的人物、伏笔、承诺、剧情线和文风档案；可把关键条目钉为本章必读。</div>
+              <div class="hint">按当前章节号、标题、本章想法和正文草稿预览 AI 写作前会读取的人物、伏笔、承诺、剧情线和文风档案；可把关键条目钉为本章必读。</div>
               <div id="memoryRecallPanel" class="memory-recall muted">选择项目后可预览本章召回</div>
             </section>
 
             <section class="panel grow" data-tool-group="write revision quality" data-tool-panel="sync-review">
-              <h2>状态同步审核</h2>
+              <h2>确认本章记忆</h2>
               <div id="pipelineFlow" class="pipeline-flow muted">暂无流程图</div>
               <div id="runDetailPanel" class="run-detail muted">暂无运行详情</div>
               <div id="syncReviewPanel" class="sync-review muted">暂无同步记录</div>
@@ -420,6 +516,38 @@
       </section>
     </main>
 
-    <script src="/app.js"></script>
+    <section id="onboardingOverlay" class="onboarding-overlay" hidden aria-modal="true" role="dialog" aria-labelledby="onboardingTitle">
+      <div class="onboarding-card">
+        <div class="onboarding-copy">
+          <p class="eyebrow">第一次使用</p>
+          <h2 id="onboardingTitle">你想怎么开始？</h2>
+          <p>不用先懂所有功能。选一个入口，系统会把你带到该填的位置；高级工具以后再展开。</p>
+        </div>
+        <div class="onboarding-choices" aria-label="开始方式">
+          <button class="onboarding-choice primary-choice" type="button" data-onboarding-action="idea">
+            <span>我只有一个想法</span>
+            <em>写几句灵感，自动生成书名、类型、标签、封面描述和项目方案。</em>
+          </button>
+          <button class="onboarding-choice" type="button" data-onboarding-action="manual">
+            <span>我已经有书名/设定</span>
+            <em>手动填写项目名、类型、初始设定，并选择档案助手。</em>
+          </button>
+          <button class="onboarding-choice" type="button" data-onboarding-action="existing">
+            <span>继续已有项目</span>
+            <em>打开左侧项目列表，选择项目后直接写下一章。</em>
+          </button>
+          <button class="onboarding-choice" type="button" data-onboarding-action="demo">
+            <span>先看演示</span>
+            <em>创建一个演示项目，快速看完整写作流程。</em>
+          </button>
+        </div>
+        <div class="onboarding-footer">
+          <button id="skipOnboarding" type="button">先自己看看</button>
+          <span>之后可从顶部“新手引导”重新打开。</span>
+        </div>
+      </div>
+    </section>
+
+    <script src="/app.js?v=guided-v2"></script>
   </body>
 </html>
