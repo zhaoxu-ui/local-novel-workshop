@@ -272,10 +272,22 @@
               <textarea id="chapterBrief" rows="5" placeholder="例如：主角第一次进案发地，发现一个不该存在的人影，结尾留下新疑点"></textarea>
             </label>
 
-            <label class="draft-box">
-              正文 / 修订结果
-              <textarea id="draft" spellcheck="false" placeholder="选择项目后，可以在这里写草稿，或点击“生成这一章”。"></textarea>
-            </label>
+            <section class="draft-box markdown-editor" aria-labelledby="draftEditorTitle">
+              <div class="markdown-editor-head">
+                <div>
+                  <span id="draftEditorTitle">正文 / 修订结果</span>
+                  <small>支持 Markdown 写作与预览</small>
+                </div>
+                <div class="editor-mode-toggle" role="tablist" aria-label="正文显示模式">
+                  <button type="button" class="active" data-editor-mode="edit" role="tab" aria-selected="true">编辑</button>
+                  <button type="button" data-editor-mode="preview" role="tab" aria-selected="false">预览</button>
+                </div>
+              </div>
+              <div class="markdown-editor-body">
+                <textarea id="draft" spellcheck="false" placeholder="选择项目后，可以在这里写 Markdown 草稿，或点击“生成这一章”。"></textarea>
+                <article id="draftPreview" class="markdown-preview" hidden aria-label="Markdown 预览"></article>
+              </div>
+            </section>
             <section id="writingQualityLoop" class="writing-quality-loop" aria-label="写作质检闭环">
               <div>
                 <p class="eyebrow">写作质检</p>

@@ -27,6 +27,7 @@ const state = {
   activeSyncPreview: null,
   snapshots: [],
   incubationResult: null,
+  editorMode: "edit",
   pipelineProgress: {
     step: "",
     status: "idle"
@@ -98,6 +99,8 @@ const el = {
   fileSelect: document.querySelector("#fileSelect"),
   chapterBrief: document.querySelector("#chapterBrief"),
   draft: document.querySelector("#draft"),
+  draftPreview: document.querySelector("#draftPreview"),
+  editorModeButtons: document.querySelectorAll("[data-editor-mode]"),
   writingQualityLoop: document.querySelector("#writingQualityLoop"),
   writingQualityTitle: document.querySelector("#writingQualityTitle"),
   writingQualityText: document.querySelector("#writingQualityText"),
@@ -2013,7 +2016,7 @@ async function loadProject(id) {
   updateAiModeVisibility();
   renderArchiveAssistantHint();
   el.ideaInput.value = data.project.premise || "";
-  el.draft.value = "";
+  setDraftValue("");
   el.chapterBrief.value = "";
   renderProjects();
   renderFiles();
@@ -2108,14 +2111,14 @@ async function loadSelectedFile() {
   const file = el.fileSelect.value;
   state.activeFile = file;
   if (!file) {
-    el.draft.value = "";
+    setDraftValue("");
     setStatus("已切换到新章节。");
     return;
   }
   setBusy(true);
   try {
     const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/file?path=${encodeURIComponent(file)}`);
-    el.draft.value = data.content;
+    setDraftValue(data.content);
     parseChapterFromFile(file);
     setStatus(`已打开：${file}`);
     renderFileBrowser();
@@ -2212,7 +2215,7 @@ async function runPipeline() {
     if (data.chapterFile && state.files.includes(data.chapterFile)) {
       await openFileByPath(data.chapterFile);
     } else {
-      el.draft.value = data.output.trim();
+      setDraftValue(data.output.trim());
     }
     setPipelineProgress("memory", "done");
     setStatus(`这一章已生成。最终章节：${data.chapterFile || "未保存"}。阶段产物：${data.runtimeDir}`);
@@ -2245,7 +2248,7 @@ async function incubateIdea() {
       })
     });
     await loadProject(state.activeProject.id);
-    el.draft.value = data.output.trim();
+    setDraftValue(data.output.trim());
     state.activeFile = data.file;
     el.fileSelect.value = "";
     state.incubationResult = {
@@ -2350,7 +2353,7 @@ async function absorbKnowledge() {
     if (data.file && state.files.includes(data.file)) {
       await openFileByPath(data.file);
     } else {
-      el.draft.value = data.output || "";
+      setDraftValue(data.output || "");
     }
     setStatus(`资料吸收完成：已更新项目能力包，并写入 ${data.file}`);
   } catch (error) {
@@ -2424,9 +2427,9 @@ async function pollCodexRun(runId, preferredFile = "") {
       const data = await api(`/api/projects/${encodeURIComponent(projectId)}/codex-run/${encodeURIComponent(runId)}`);
       const status = data.status.status;
       if (data.final?.trim()) {
-        el.draft.value = data.final.trim();
+        setDraftValue(data.final.trim());
       } else if (data.log?.trim()) {
-        el.draft.value = data.log.trim();
+        setDraftValue(data.log.trim());
       }
       setStatus(`Codex 运行状态：${status}。runId：${runId}`);
       if (status === "running" && attempts < 240) {
@@ -2502,7 +2505,7 @@ async function copyProjectPath() {
     await navigator.clipboard.writeText(path);
     setStatus(`已复制项目路径：${path}`);
   } catch {
-    el.draft.value = path;
+    setDraftValue(path);
     setStatus("浏览器未允许写入剪贴板，已把项目路径放到正文框。");
   }
 }
@@ -2560,6 +2563,139 @@ function escapeHtml(value) {
 
 function escapeAttr(value) {
   return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+function renderInlineMarkdown(value = "") {
+  return escapeHtml(value)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (_match, text, url) => `<a href="${escapeAttr(url)}" target="_blank" rel="noreferrer">${text}</a>`)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function renderMarkdownTable(lines) {
+  const rows = lines
+    .filter((line) => line.trim())
+    .map((line) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((cell) => renderInlineMarkdown(cell.trim())));
+  if (rows.length < 2) return "";
+  const head = rows[0].map((cell) => `<th>${cell}</th>`).join("");
+  const body = rows.slice(2).map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join("")}</tr>`).join("");
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function markdownToHtml(markdown = "") {
+  const lines = String(markdown || "").replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+
+    const fence = line.match(/^```(.*)$/);
+    if (fence) {
+      const code = [];
+      index += 1;
+      while (index < lines.length && !/^```/.test(lines[index])) {
+        code.push(lines[index]);
+        index += 1;
+      }
+      if (index < lines.length) index += 1;
+      blocks.push(`<pre><code>${escapeHtml(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      blocks.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      index += 1;
+      continue;
+    }
+
+    if (/^\s*[-*+]\s+/.test(line)) {
+      const items = [];
+      while (index < lines.length && /^\s*[-*+]\s+/.test(lines[index])) {
+        items.push(`<li>${renderInlineMarkdown(lines[index].replace(/^\s*[-*+]\s+/, ""))}</li>`);
+        index += 1;
+      }
+      blocks.push(`<ul>${items.join("")}</ul>`);
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items = [];
+      while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
+        items.push(`<li>${renderInlineMarkdown(lines[index].replace(/^\s*\d+\.\s+/, ""))}</li>`);
+        index += 1;
+      }
+      blocks.push(`<ol>${items.join("")}</ol>`);
+      continue;
+    }
+
+    if (/^>\s?/.test(line)) {
+      const quote = [];
+      while (index < lines.length && /^>\s?/.test(lines[index])) {
+        quote.push(lines[index].replace(/^>\s?/, ""));
+        index += 1;
+      }
+      blocks.push(`<blockquote>${quote.map(renderInlineMarkdown).join("<br>")}</blockquote>`);
+      continue;
+    }
+
+    if (line.includes("|") && lines[index + 1] && /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(lines[index + 1])) {
+      const table = [];
+      while (index < lines.length && lines[index].includes("|") && lines[index].trim()) {
+        table.push(lines[index]);
+        index += 1;
+      }
+      blocks.push(renderMarkdownTable(table));
+      continue;
+    }
+
+    const paragraph = [];
+    while (
+      index < lines.length
+      && lines[index].trim()
+      && !/^```/.test(lines[index])
+      && !/^(#{1,3})\s+/.test(lines[index])
+      && !/^\s*[-*+]\s+/.test(lines[index])
+      && !/^\s*\d+\.\s+/.test(lines[index])
+      && !/^>\s?/.test(lines[index])
+    ) {
+      paragraph.push(lines[index].trim());
+      index += 1;
+    }
+    blocks.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+  }
+
+  return blocks.filter(Boolean).join("");
+}
+
+function renderMarkdownPreview() {
+  if (!el.draftPreview || !el.draft) return;
+  el.draftPreview.innerHTML = markdownToHtml(el.draft.value);
+}
+
+function setDraftValue(value = "") {
+  if (!el.draft) return;
+  el.draft.value = value || "";
+  renderMarkdownPreview();
+}
+
+function setEditorMode(mode = "edit") {
+  state.editorMode = mode === "preview" ? "preview" : "edit";
+  if (state.editorMode === "preview") renderMarkdownPreview();
+  if (el.draft) el.draft.hidden = state.editorMode !== "edit";
+  if (el.draftPreview) el.draftPreview.hidden = state.editorMode !== "preview";
+  for (const button of el.editorModeButtons || []) {
+    const active = button.dataset.editorMode === state.editorMode;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  }
 }
 
 function renderProjectStats() {
@@ -2659,7 +2795,7 @@ async function loadChapterFromBoard(chapter) {
   } else {
     state.activeFile = "";
     el.fileSelect.value = "";
-    el.draft.value = "";
+    setDraftValue("");
     setStatus(`已载入第 ${chapter.no} 章规划。可以补充“这一章想写什么”后点击生成。`);
   }
   renderChapterBoard();
@@ -4278,6 +4414,7 @@ on(el.chapterBrief, "input", scheduleAutosave);
 on(el.chapterBrief, "input", renderSmartGuide);
 on(el.draft, "input", scheduleAutosave);
 on(el.draft, "input", renderSmartGuide);
+on(el.draft, "input", renderMarkdownPreview);
 on(el.ideaInput, "input", renderSmartGuide);
 on(el.projectPremise, "input", renderSmartGuide);
 on(el.runGlobalSearch, "click", runGlobalSearch);
@@ -4333,6 +4470,9 @@ for (const button of document.querySelectorAll("[data-creation-mode]")) {
 for (const button of document.querySelectorAll("[data-experience-mode]")) {
   button.addEventListener("click", () => setExperienceMode(button.dataset.experienceMode));
 }
+for (const button of document.querySelectorAll("[data-editor-mode]")) {
+  button.addEventListener("click", () => setEditorMode(button.dataset.editorMode));
+}
 for (const button of document.querySelectorAll("[data-onboarding-action]")) {
   button.addEventListener("click", () => handleOnboardingAction(button.dataset.onboardingAction));
 }
@@ -4353,5 +4493,7 @@ renderStoryBible();
 renderStyleProfileResult();
 renderMemoryRecallResult();
 renderPipelineProgress();
+renderMarkdownPreview();
+setEditorMode("edit");
 setAutosaveStatus("自动保存待机");
 maybeShowOnboarding();
