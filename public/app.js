@@ -109,6 +109,16 @@ const el = {
   pathReadinessText: document.querySelector("#pathReadinessText"),
   pathReadinessItems: document.querySelector("#pathReadinessItems"),
   runPathReadiness: document.querySelector("#runPathReadiness"),
+  projectDashboard: document.querySelector("#projectDashboard"),
+  dashboardTitle: document.querySelector("#dashboardTitle"),
+  dashboardNextAction: document.querySelector("#dashboardNextAction"),
+  dashboardMetrics: document.querySelector("#dashboardMetrics"),
+  dashboardLatestTask: document.querySelector("#dashboardLatestTask"),
+  firstChapterStarter: document.querySelector("#firstChapterStarter"),
+  firstChapterTitle: document.querySelector("#firstChapterTitle"),
+  firstChapterBriefText: document.querySelector("#firstChapterBriefText"),
+  firstChapterBeats: document.querySelector("#firstChapterBeats"),
+  useFirstChapterStarter: document.querySelector("#useFirstChapterStarter"),
   incubationResultPanel: document.querySelector("#incubationResultPanel"),
   incubationResultTitle: document.querySelector("#incubationResultTitle"),
   incubationResultStatus: document.querySelector("#incubationResultStatus"),
@@ -961,6 +971,73 @@ function runReadinessAction(action) {
   return renderSmartGuide();
 }
 
+function renderProjectDashboard(dashboard = null) {
+  if (!el.projectDashboard) return;
+  if (!state.activeProject || !dashboard) {
+    el.dashboardTitle.textContent = "选择项目后显示进度";
+    el.dashboardNextAction.textContent = "这里会显示当前进度、最近产物和最建议的下一步。";
+    el.dashboardMetrics.innerHTML = "";
+    el.dashboardLatestTask.textContent = "暂无任务";
+    el.dashboardLatestTask.classList.add("muted");
+    renderFirstChapterStarter(null);
+    return;
+  }
+  el.dashboardTitle.textContent = `${dashboard.title} · ${dashboard.genre}`;
+  el.dashboardNextAction.textContent = `下一步：${dashboard.nextAction?.label || "继续写作"}。${dashboard.nextAction?.detail || ""}`;
+  const metrics = dashboard.metrics || {};
+  el.dashboardMetrics.innerHTML = [
+    ["正文", `${metrics.chapters || 0} 章`],
+    ["规划", `${metrics.plannedChapters || 0} 条`],
+    ["任务", `${metrics.tasks || 0} 个`],
+    ["快照", `${metrics.snapshots || 0} 个`],
+    ["准备度", `${metrics.readinessScore || 0}`]
+  ].map(([label, value]) => `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+  if (dashboard.latestTask) {
+    el.dashboardLatestTask.classList.remove("muted");
+    el.dashboardLatestTask.innerHTML = `<strong>最近任务：${escapeHtml(dashboard.latestTask.title || "任务")}</strong><span>${escapeHtml(taskStatusLabel(dashboard.latestTask.status))}</span>`;
+  } else {
+    el.dashboardLatestTask.textContent = "暂无任务";
+    el.dashboardLatestTask.classList.add("muted");
+  }
+  renderFirstChapterStarter(dashboard.firstChapterStarter);
+}
+
+async function refreshProjectDashboard() {
+  if (!state.activeProject) {
+    renderProjectDashboard();
+    return;
+  }
+  try {
+    const data = await api(`/api/projects/${encodeURIComponent(state.activeProject.id)}/dashboard`);
+    renderProjectDashboard(data.dashboard);
+  } catch (error) {
+    setStatus(actionableErrorMessage(error), "error");
+  }
+}
+
+function renderFirstChapterStarter(starter = null) {
+  if (!el.firstChapterStarter) return;
+  const hasChapter = state.files?.some((file) => file.startsWith("01_正文/"));
+  if (!state.activeProject || !starter || hasChapter) {
+    el.firstChapterStarter.hidden = true;
+    return;
+  }
+  el.firstChapterStarter.hidden = false;
+  el.firstChapterTitle.textContent = starter.title || "第一章";
+  el.firstChapterBriefText.textContent = starter.brief || "用一个具体冲突开场，结尾留下明确问题。";
+  el.firstChapterBeats.innerHTML = (starter.beats || []).map((beat) => `<span>${escapeHtml(beat)}</span>`).join("");
+}
+
+function useFirstChapterStarter() {
+  if (!el.firstChapterStarter || el.firstChapterStarter.hidden) return guideToChapterBrief();
+  const brief = el.firstChapterBriefText?.textContent?.trim() || "";
+  if (brief && !el.chapterBrief.value.trim()) {
+    el.chapterBrief.value = brief;
+  }
+  renderSmartGuide();
+  return guideToChapterBrief("已把第一章启动卡填入“这一章想写什么”，可以继续补充细节。");
+}
+
 function compactMarkdownValue(value = "", maxLength = 120) {
   const text = String(value)
     .replace(/^#+\s*/g, "")
@@ -1791,6 +1868,7 @@ async function loadProject(id) {
   renderNarrativeRadar();
   renderStoryBible();
   renderPathReadiness();
+  refreshProjectDashboard();
   renderStyleProfileResult();
   renderMemoryRecallResult();
   renderSyncReviews();
@@ -4003,6 +4081,7 @@ on(el.smartPrimaryAction, "click", runSmartPrimaryAction);
 on(el.smartPublishAction, "click", runSmartPublishAction);
 on(el.nextStepAction, "click", runNextStepAction);
 on(el.runPathReadiness, "click", refreshPathReadiness);
+on(el.useFirstChapterStarter, "click", useFirstChapterStarter);
 on(el.incubationOpenFile, "click", openIncubationFile);
 on(el.incubationRerun, "click", rerunIncubation);
 on(el.incubationStartChapter, "click", startFirstChapterFromIncubation);

@@ -839,6 +839,111 @@ label.needs-attention,
   background: var(--danger-soft);
 }
 
+.project-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.45fr);
+  gap: 14px;
+  align-items: stretch;
+  padding: 16px 18px;
+  border: 1px solid #d8e4df;
+  border-radius: var(--radius);
+  background: #ffffff;
+  box-shadow: var(--shadow);
+}
+
+.project-dashboard h2 {
+  margin: 2px 0 6px;
+  font-size: 18px;
+}
+
+.project-dashboard p:last-child {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.dashboard-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.dashboard-metrics div {
+  display: grid;
+  gap: 4px;
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.dashboard-metrics span,
+.dashboard-latest-task span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dashboard-metrics strong,
+.dashboard-latest-task strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.dashboard-latest-task {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.first-chapter-starter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 0.25fr);
+  gap: 14px;
+  align-items: center;
+  padding: 16px 18px;
+  border: 1px solid #cfe5df;
+  border-radius: var(--radius);
+  background: #fbfffd;
+  box-shadow: var(--shadow);
+}
+
+.first-chapter-starter[hidden] {
+  display: none;
+}
+
+.first-chapter-starter h2 {
+  margin: 2px 0 6px;
+  font-size: 18px;
+}
+
+.first-chapter-starter p:last-child {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.first-chapter-beats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.first-chapter-beats span {
+  padding: 7px 10px;
+  border: 1px solid #d7e8e1;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 650;
+}
+
 .incubation-result-panel {
   display: grid;
   gap: 14px;
@@ -2859,11 +2964,14 @@ label.needs-attention,
 
   .next-step-banner,
   .path-readiness-panel,
+  .project-dashboard,
+  .first-chapter-starter,
   .pipeline-progress {
     grid-template-columns: 1fr;
   }
 
-  .path-readiness-items {
+  .path-readiness-items,
+  .dashboard-metrics {
     grid-template-columns: 1fr;
   }
 

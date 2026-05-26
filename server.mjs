@@ -2714,6 +2714,50 @@ async function buildPathReadinessReport(projectId) {
   };
 }
 
+async function buildProjectDashboard(projectId) {
+  const project = await readProject(projectId);
+  const files = project.files || [];
+  const chapters = project.chapters || [];
+  const snapshots = await listProjectSnapshots(projectId);
+  const tasks = await listProjectTasks(projectId);
+  const chapterFiles = files.filter((file) => file.startsWith("01_正文/") && file.endsWith(".md"));
+  const latestTask = tasks[0] || null;
+  const readiness = await buildPathReadinessReport(projectId);
+  const firstIdea = chapters[0]?.brief || project.premise || "开场交代主角处境，用一个具体异常或冲突把读者带进故事。";
+  const nextChapterNo = chapterFiles.length + 1;
+  return {
+    projectId,
+    title: project.name,
+    genre: project.genre || "未填写类型",
+    metrics: {
+      chapters: chapterFiles.length,
+      plannedChapters: chapters.length,
+      files: files.length,
+      tasks: tasks.length,
+      snapshots: snapshots.length,
+      readinessScore: readiness.score
+    },
+    nextAction: readiness.items.find((item) => item.status === "blocker") || readiness.items.find((item) => item.status === "warning") || {
+      label: "继续写作",
+      detail: `建议开始第 ${nextChapterNo} 章。`,
+      action: "brief",
+      status: "ok"
+    },
+    latestTask,
+    firstChapterStarter: {
+      chapterNo: 1,
+      title: chapters[0]?.title || "第一章",
+      brief: firstIdea,
+      beats: [
+        "用具体场景开场，不先解释世界观。",
+        "让主角遇到一个必须立刻处理的小冲突。",
+        "结尾留下一个明确问题，让读者想点下一章。"
+      ]
+    },
+    updatedAt: new Date().toISOString()
+  };
+}
+
 async function getProjectStats(projectId, files = null) {
   const allFiles = files || (await listMarkdownFiles(projectId));
   const chapterFiles = allFiles.filter((file) => file.startsWith("01_正文/"));
@@ -5859,6 +5903,10 @@ async function routeApi(req, res, url) {
 
     if (req.method === "GET" && parts[3] === "readiness") {
       return sendJson(res, 200, { report: await buildPathReadinessReport(projectId) });
+    }
+
+    if (req.method === "GET" && parts[3] === "dashboard") {
+      return sendJson(res, 200, { dashboard: await buildProjectDashboard(projectId) });
     }
 
     if (req.method === "GET" && parts[3] === "narrative-radar") {

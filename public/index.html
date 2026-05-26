@@ -163,6 +163,16 @@
               <div id="pathReadinessItems" class="path-readiness-items"></div>
             </section>
 
+            <section id="projectDashboard" class="project-dashboard" aria-label="项目仪表盘">
+              <div>
+                <p class="eyebrow">项目仪表盘</p>
+                <h2 id="dashboardTitle">选择项目后显示进度</h2>
+                <p id="dashboardNextAction">这里会显示当前进度、最近产物和最建议的下一步。</p>
+              </div>
+              <div id="dashboardMetrics" class="dashboard-metrics"></div>
+              <div id="dashboardLatestTask" class="dashboard-latest-task muted">暂无任务</div>
+            </section>
+
             <section id="incubationResultPanel" class="incubation-result-panel" hidden aria-label="立项建议">
               <div class="incubation-result-head">
                 <div>
@@ -177,6 +187,16 @@
                 <button id="incubationRerun" type="button">重新生成方案</button>
                 <button id="incubationStartChapter" class="primary" type="button">开始写第一章</button>
               </div>
+            </section>
+
+            <section id="firstChapterStarter" class="first-chapter-starter" hidden aria-label="第一章启动卡">
+              <div>
+                <p class="eyebrow">第一章启动卡</p>
+                <h2 id="firstChapterTitle">第一章</h2>
+                <p id="firstChapterBriefText">立项完成后，我会把开篇建议整理到这里。</p>
+              </div>
+              <div id="firstChapterBeats" class="first-chapter-beats"></div>
+              <button id="useFirstChapterStarter" class="primary" type="button">用它开始第一章</button>
             </section>
 
             <div class="quick-open quick-open-collapsed" aria-label="资料中心">

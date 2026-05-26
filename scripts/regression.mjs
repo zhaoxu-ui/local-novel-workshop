@@ -70,6 +70,10 @@ try {
   if (!readinessBeforeQuality.report?.items?.some((item) => item.key === "snapshot" && item.status === "ok")) {
     throw new Error("路径检查未识别自动安全快照");
   }
+  const dashboard = await api(`/api/projects/${encodeURIComponent(id)}/dashboard`);
+  if (!dashboard.dashboard?.metrics || dashboard.dashboard.metrics.chapters < 1 || !dashboard.dashboard.firstChapterStarter?.brief) {
+    throw new Error("项目仪表盘未返回章节进度或第一章启动卡");
+  }
 
   const quality = await api(`/api/projects/${encodeURIComponent(id)}/quality-check`, {
     method: "POST",
