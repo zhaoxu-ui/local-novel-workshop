@@ -584,7 +584,7 @@ label.needs-attention,
 
 .top-actions {
   display: grid;
-  grid-template-columns: minmax(144px, 0.9fr) repeat(4, minmax(96px, 1fr));
+  grid-template-columns: minmax(132px, 0.75fr) repeat(5, minmax(92px, 1fr));
   gap: 10px;
 }
 

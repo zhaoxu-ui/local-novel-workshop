@@ -139,6 +139,7 @@ const requiredUiMarkers = [
   ["styles.css", ".experience-mode-toggle"],
   ["styles.css", ".beginner-mode"],
   ["styles.css", ".expert-mode"],
+  ["styles.css", "grid-template-columns: minmax(132px, 0.75fr) repeat(5, minmax(92px, 1fr))"],
   ["styles.css", ".path-readiness-panel"],
   ["styles.css", ".project-dashboard"],
   ["styles.css", ".first-chapter-starter"],
