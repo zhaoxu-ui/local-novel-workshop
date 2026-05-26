@@ -683,9 +683,15 @@ function guideToManualProjectName() {
   highlightAndFocus(el.projectName, el.projectName?.closest(".creation-start-panel"), "在左侧“精准创建”里填写项目名，再创建小说项目。");
 }
 
-function guideToChapterBrief(message = "在中间的“这一章想写什么”里写几句：本章要发生什么、冲突是什么、结尾留下什么。") {
-  state.layout.leftCollapsed = false;
-  highlightAndFocus(el.chapterBrief, el.chapterBrief?.closest(".brief-box"), message);
+function guideToChapterBrief(message = "在右侧“这一章想写什么”里写几句：本章要发生什么、冲突是什么、结尾留下什么。") {
+  state.layout.rightCollapsed = false;
+  state.layout.advancedToolsCollapsed = true;
+  setToolboxGroup("write");
+  setActiveToolPanel("text-actions");
+  renderLayoutState();
+  window.requestAnimationFrame(() => {
+    highlightAndFocus(el.chapterBrief, el.chapterBrief?.closest(".brief-box"), message);
+  });
 }
 
 function openGuidedToolPanel(group, panelId, target, message) {

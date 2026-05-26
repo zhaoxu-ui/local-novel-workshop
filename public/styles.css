@@ -714,16 +714,27 @@ label.needs-attention,
 }
 
 .beginner-mode .main-grid {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
 }
 
-.beginner-mode .toolbox,
 .beginner-mode .quick-open {
   display: none;
 }
 
 .beginner-mode .toolbox-tabs,
 .beginner-mode .top-pane-toggle {
+  display: none;
+}
+
+.beginner-mode .toolbox {
+  display: grid;
+}
+
+.beginner-mode .toolbox-heading {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.beginner-mode #toggleAdvancedTools {
   display: none;
 }
 
@@ -1544,6 +1555,26 @@ label.needs-attention,
 
 .text-actions-panel {
   gap: 14px;
+}
+
+.text-actions-panel .next-step-banner {
+  grid-template-columns: 1fr;
+  padding: 14px;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.text-actions-panel .next-step-banner h2 {
+  font-size: 17px;
+}
+
+.text-actions-panel .next-step-banner button {
+  min-height: 44px;
+}
+
+.beginner-mode .next-step-banner {
+  border-color: #9fcfc2;
+  background: #f2fbf7;
 }
 
 .text-actions-panel .editor-actions {

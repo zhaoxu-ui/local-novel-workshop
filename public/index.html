@@ -148,15 +148,6 @@
               </div>
             </section>
 
-            <section id="nextStepBanner" class="next-step-banner" aria-label="下一步提示">
-              <div>
-                <p class="eyebrow">推荐下一步</p>
-                <h2 id="nextStepTitle">先写一个想法</h2>
-                <p id="nextStepText">在左侧写几句原始思路，系统会帮你整理成项目方案。</p>
-              </div>
-              <button id="nextStepAction" class="primary" type="button">去填写想法</button>
-            </section>
-
             <section id="pathReadinessPanel" class="path-readiness-panel" aria-label="创作路径检查">
               <div>
                 <p class="eyebrow">路径检查</p>
@@ -296,7 +287,15 @@
 
             <section class="panel compact-panel text-actions-panel" data-tool-group="write quality publish revision" data-tool-panel="text-actions">
               <h2>文本操作</h2>
-              <div class="hint">中间只保留正文和预览。保存、质检、发布和版本对照集中放在这里。</div>
+              <section id="nextStepBanner" class="beginner-step-card next-step-banner" aria-label="下一步提示">
+                <div>
+                  <p class="eyebrow">推荐下一步</p>
+                  <h2 id="nextStepTitle">先写一个想法</h2>
+                  <p id="nextStepText">在左侧写几句原始思路，系统会帮你整理成项目方案。</p>
+                </div>
+                <button id="nextStepAction" class="primary" type="button">去填写想法</button>
+              </section>
+              <div class="hint">按上面的推荐按钮走即可。中间只保留正文和预览，其他操作都集中在这里。</div>
               <label class="brief-box">
                 这一章想写什么
                 <textarea id="chapterBrief" rows="5" placeholder="例如：主角第一次进案发地，发现一个不该存在的人影，结尾留下新疑点"></textarea>
