@@ -752,6 +752,11 @@ label.needs-attention,
   display: none !important;
 }
 
+.beginner-mode .editor-section > .one-stop-guide,
+.expert-mode .editor-section > .one-stop-guide {
+  display: grid !important;
+}
+
 .editor-section {
   display: grid;
   grid-auto-rows: max-content;
@@ -764,19 +769,19 @@ label.needs-attention,
 
 .one-stop-guide {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.46fr);
+  gap: 14px 18px;
   align-items: start;
-  padding: 20px 22px;
+  padding: 16px 18px;
   border: 1px solid #d4e7e3;
-  border-radius: var(--radius);
+  border-radius: 8px;
   background: #fbfffd;
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
 .guide-copy h2 {
   margin: 4px 0 7px;
-  font-size: clamp(22px, 2.1vw, 29px);
+  font-size: 20px;
   line-height: 1.2;
   letter-spacing: 0;
 }
@@ -789,27 +794,40 @@ label.needs-attention,
 }
 
 .guide-steps {
+  grid-column: 1 / -1;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .guide-steps span {
-  min-height: 36px;
+  min-height: 34px;
   display: grid;
   place-items: center;
   border: 1px solid #cfe5df;
   border-radius: 6px;
-  background: rgba(255, 255, 255, 0.72);
-  color: var(--accent-strong);
+  background: #fff;
+  color: var(--muted);
   font-size: 13px;
   font-weight: 650;
 }
 
+.guide-steps span.done {
+  border-color: #bfded4;
+  background: #f4fbf8;
+  color: var(--accent-strong);
+}
+
+.guide-steps span.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
 .guide-actions {
   display: grid;
-  grid-template-columns: minmax(240px, 1.25fr) minmax(220px, 1fr) minmax(160px, 0.65fr);
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 8px;
   align-items: stretch;
 }
 
@@ -818,6 +836,10 @@ label.needs-attention,
   min-height: 44px;
   padding: 0 14px;
   font-weight: 650;
+}
+
+.beginner-mode #smartAdvancedAction {
+  display: none;
 }
 
 .next-step-banner {
@@ -3533,7 +3555,8 @@ button.is-loading::before {
     grid-template-columns: 270px minmax(0, 1fr);
   }
 
-  .main-grid {
+  .main-grid,
+  .beginner-mode .main-grid {
     grid-template-columns: 1fr;
     overflow: auto;
   }
@@ -3652,7 +3675,8 @@ button.is-loading::before {
     flex-direction: column;
   }
 
-  .main-grid {
+  .main-grid,
+  .beginner-mode .main-grid {
     overflow: visible;
   }
 

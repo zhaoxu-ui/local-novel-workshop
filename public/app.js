@@ -1259,21 +1259,48 @@ function smartGuideState() {
         ? "点击主按钮后，会自动创建项目并生成书名、类型、标签、封面描述、主角方案和前三章启动方案。"
         : "在左侧写几句原始思路，不需要完整大纲；系统会先帮你整理成立项建议。",
       primary: hasIdea ? "生成立项建议" : "填写创意后开始",
+      primaryAction: hasIdea ? "incubate" : "idea",
       primaryDisabled: false,
-      publishDisabled: true
+      publishDisabled: true,
+      stage: "idea"
     };
   }
   const chapterCount = state.files.filter((file) => file.startsWith("01_正文/")).length;
   const hasBrief = Boolean(el.chapterBrief?.value.trim());
   const hasDraft = Boolean(el.draft?.value.trim());
   const hasSyncReview = Boolean(state.activeSyncReview || state.workflowResult?.syncReviews?.length);
+  const chapterStatus = selectedChapter()?.status || "";
   if (hasSyncReview) {
     return {
       title: "本章已生成，先确认记忆同步",
       text: "系统已经整理出本章可能需要写入长期记忆的内容。确认后再写下一章，可以减少人物、伏笔和读者承诺前后打架。",
       primary: "确认本章记忆",
+      primaryAction: "sync",
       primaryDisabled: false,
-      publishDisabled: false
+      publishDisabled: false,
+      stage: "review"
+    };
+  }
+  if (chapterStatus === "待审") {
+    return {
+      title: "本章待审核",
+      text: "正文已经生成或保存。下一步先审核这一章，确认没有硬伤后再标记通过或进入修订。",
+      primary: "审核这一章",
+      primaryAction: "quality",
+      primaryDisabled: false,
+      publishDisabled: chapterCount === 0,
+      stage: "review"
+    };
+  }
+  if (chapterStatus === "可发布") {
+    return {
+      title: "本章可发布",
+      text: "当前章节已经通过审核，可以整理发布资料、导出正文，或继续写下一章。",
+      primary: "写下一章",
+      primaryAction: "brief",
+      primaryDisabled: false,
+      publishDisabled: false,
+      stage: "publish"
     };
   }
   if (hasBrief || hasDraft || state.activeFile) {
@@ -1281,8 +1308,10 @@ function smartGuideState() {
       title: "继续处理当前章节",
       text: "主按钮会按当前 AI 执行方式生成或修订这一章，文风、资料和长期记忆会自动进入流程。",
       primary: "生成/修订本章",
+      primaryAction: "pipeline",
       primaryDisabled: false,
-      publishDisabled: chapterCount === 0
+      publishDisabled: chapterCount === 0,
+      stage: "write"
     };
   }
   return {
@@ -1291,9 +1320,21 @@ function smartGuideState() {
       ? "从右侧章节看板选择章节，或在下面填写“这一章想写什么”后直接生成下一章。"
       : "填写“这一章想写什么”，说明开场、冲突、信息增量和结尾钩子；主按钮会完成整章生成闭环。",
     primary: chapterCount ? "写下一章" : "开始第一章",
+    primaryAction: "brief",
     primaryDisabled: false,
-    publishDisabled: chapterCount === 0
+    publishDisabled: chapterCount === 0,
+    stage: "write"
   };
+}
+
+function renderGuideSteps(stage = "idea") {
+  const order = ["idea", "write", "review", "publish"];
+  const activeIndex = Math.max(0, order.indexOf(stage));
+  for (const item of document.querySelectorAll("[data-guide-stage]")) {
+    const index = order.indexOf(item.dataset.guideStage || "");
+    item.classList.toggle("active", index === activeIndex);
+    item.classList.toggle("done", index >= 0 && index < activeIndex);
+  }
 }
 
 function nextStepState() {
@@ -1784,7 +1825,9 @@ function renderSmartGuide() {
   el.smartGuideTitle.textContent = guide.title;
   el.smartGuideText.textContent = guide.text;
   el.smartPrimaryAction.textContent = guide.primary;
+  el.smartPrimaryAction.dataset.smartPrimaryAction = guide.primaryAction || "";
   el.smartPrimaryAction.disabled = Boolean(guide.primaryDisabled);
+  renderGuideSteps(guide.stage || "idea");
   if (el.smartPublishAction) {
     el.smartPublishAction.disabled = Boolean(guide.publishDisabled);
     el.smartPublishAction.title = guide.publishDisabled ? "先生成至少一章正文后再整理发布" : "运行发布前总检查，并打开发布准备工具";
@@ -1794,6 +1837,23 @@ function renderSmartGuide() {
 }
 
 async function runSmartPrimaryAction() {
+  const action = el.smartPrimaryAction?.dataset.smartPrimaryAction || "";
+  if (action === "idea") return guideToIdeaInput();
+  if (action === "incubate") {
+    if (!el.ideaInput.value.trim() && el.projectPremise?.value.trim()) {
+      el.ideaInput.value = el.projectPremise.value.trim();
+    }
+    return el.ideaInput.value.trim() ? incubateIdea() : guideToIdeaInput();
+  }
+  if (action === "brief") return guideToChapterBrief();
+  if (action === "quality") return runQualityCheck();
+  if (action === "sync") {
+    state.layout.advancedToolsCollapsed = false;
+    setToolboxGroup("write");
+    setActiveToolPanel("sync-review");
+    return setStatus("已打开“确认本章记忆”。确认后再继续下一章。");
+  }
+  if (action === "pipeline" && state.activeProject) return runPipeline();
   if (!state.activeProject) {
     if (!el.ideaInput.value.trim() && el.projectPremise?.value.trim()) {
       el.ideaInput.value = el.projectPremise.value.trim();
