@@ -14,7 +14,24 @@ const base = `http://127.0.0.1:${started.port}`;
 
 try {
   const health = await fetch(`${base}/api/health`).then((res) => res.json());
-  const html = await fetch(`${base}/`).then((res) => res.text());
+  const htmlRes = await fetch(`${base}/`);
+  const html = await htmlRes.text();
+  const demo = await fetch(`${base}/api/demo-project`, { method: "POST" }).then((res) => res.json());
+  const pipelineProbe = await fetch(`${base}/api/projects/${encodeURIComponent(demo.project.id)}/pipeline`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      runner: "model",
+      chapterNo: 1,
+      title: "接口探测",
+      brief: "验证生成这一章接口存在，模型连接失败也不能变成 404。",
+      draft: "",
+      activeFile: "",
+      contextFiles: [],
+      model: "probe",
+      endpoint: "http://127.0.0.1:1/api/generate"
+    })
+  });
   const appJs = await fs.readFile(path.join(root, "public", "app.js"), "utf8");
   const required = [
     "本地小说工坊",
@@ -35,11 +52,26 @@ try {
   ];
   const missing = required.filter((marker) => !html.includes(marker));
   const missingAppMarkers = requiredAppMarkers.filter((marker) => !appJs.includes(marker));
-  if (!health.ok || missing.length || missingAppMarkers.length) {
-    console.error(JSON.stringify({ ok: false, missing, missingAppMarkers, health }, null, 2));
+  const htmlCacheControl = htmlRes.headers.get("cache-control") || "";
+  if (!health.ok || missing.length || missingAppMarkers.length || !htmlCacheControl.includes("no-store") || pipelineProbe.status === 404) {
+    console.error(JSON.stringify({
+      ok: false,
+      missing,
+      missingAppMarkers,
+      health,
+      htmlCacheControl,
+      pipelineProbeStatus: pipelineProbe.status,
+      pipelineProbeBody: await pipelineProbe.text()
+    }, null, 2));
     process.exit(1);
   }
-  console.log(JSON.stringify({ ok: true, checkedMarkers: required.length + requiredAppMarkers.length, url: base }, null, 2));
+  console.log(JSON.stringify({
+    ok: true,
+    checkedMarkers: required.length + requiredAppMarkers.length,
+    url: base,
+    htmlCacheControl,
+    pipelineProbeStatus: pipelineProbe.status
+  }, null, 2));
 } finally {
   started.server.close();
 }

@@ -6760,7 +6760,9 @@ async function routeApi(req, res, url) {
     }
   }
 
-  const err = new Error("接口不存在");
+  const err = new Error(`接口不存在：${req.method} ${url.pathname}`);
+  err.method = req.method;
+  err.path = url.pathname;
   err.status = 404;
   throw err;
 }
@@ -6774,7 +6776,13 @@ async function serveStatic(req, res, url) {
   try {
     const content = await fs.readFile(full);
     const type = TEXT_TYPES.get(path.extname(full).toLowerCase()) || "application/octet-stream";
-    res.writeHead(200, { "content-type": type });
+    const cacheControl = /\.(html|js|css)$/i.test(full)
+      ? "no-store, no-cache, must-revalidate, max-age=0"
+      : "no-cache";
+    res.writeHead(200, {
+      "content-type": type,
+      "cache-control": cacheControl
+    });
     res.end(content);
   } catch {
     sendText(res, 404, "Not found");

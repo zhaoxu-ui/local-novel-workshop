@@ -732,7 +732,14 @@ async function api(path, options = {}) {
     ...options
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `请求失败：${res.status}`);
+  if (!res.ok) {
+    const method = options.method || "GET";
+    const message = data.error || `请求失败：${res.status}`;
+    const detail = res.status === 404
+      ? `${message}。请求：${method} ${path}。如果刚更新过项目，请刷新页面后再试。`
+      : message;
+    throw new Error(detail);
+  }
   return data;
 }
 
